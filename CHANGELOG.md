@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.5] - 2026-09-16
+
+### 修复
+
+- 修复「已归档对话」中部分历史会话显示为**未命名**的问题：DSH core
+  0.1.5 的投影缓存身份校验新增 `formatVersion`，格式迁移（如 v0/v2 日志
+  规范化到 v3）前写入的检查点没有该字段，严格读取必然未命中，标题被丢弃。
+  现按核心 `projectionsFor` 的两级阶梯，在严格读取未命中时退回
+  `cachedPredecessorTitle`（仅标题、行版本与 schema 仍由注册表复核），
+  历史会话的标题得以恢复；该调用带特性守卫，旧运行时自动跳过。
+- peer 依赖范围补充 `^0.1.5-rc.2`（适配 DSH core 0.1.5-rc.2 / Desktop
+  2.0.10；`formatVersion` 与 predecessor 标题阶梯均在该线引入）。
+- 设计文档 3.3 节更新为两级阶梯说明。
+
 ## [0.1.4] - 2026-09-05
 
 ### 修复

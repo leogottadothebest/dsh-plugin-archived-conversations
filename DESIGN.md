@@ -5,8 +5,8 @@
 
 ## 1. 背景与现状
 
-深入研读了 DSH core 0.1.2-rc.1（Desktop 2.0.5 集成环境）的核心实现后确认
-（初稿基线为 alpha.1 / Desktop 2.0.4）：
+深入研读了 DSH core 0.1.5-rc.2（Desktop 2.0.10 集成环境）的核心实现后确认
+（初稿基线为 alpha.1 / Desktop 2.0.4，0.1.4 适配 0.1.2-rc.1 / 2.0.5）：
 
 - **归档能力已内建于工作区域（`dsh-workspace`）**：`WorkspaceRegistry`
   持有 registry 级持久状态 `archivedSessionIds`（`workspace.json` 的全局
@@ -85,12 +85,19 @@
 
 ### 3.3 行投影（零 I/O 阶梯）
 
-与 `api-session-controller` 的 `summarizeCold` 同构：
+与 `api-session-controller` 的 `projectionsFor` 同构（core 0.1.5 起为两级）：
 
 - **live 会话**：`sessionProjections.cachedSnapshot(session)`；
 - **冷会话**：`sessionPersistence` 头（`registry.readSessionHeader`）+
-  `sessionProjectionCache.cachedSnapshot(header)`（`session_projcache` 持久
-  投影缓存，按 `{createdAt, cwd}` 身份校验，绝不读错生命周期）。
+  `sessionProjectionCache.cachedSnapshot(header, SessionLogOffset(0))`
+  （`session_projcache` 持久投影缓存，按
+  `{formatVersion, createdAt, cwd, isSeeded, inheritedEventCount}` 身份
+  校验，绝不读错生命周期）；严格读取未命中时再退一级
+  `cachedPredecessorTitle(header, SessionLogOffset(0))`——**格式迁移前写入的
+  检查点没有 `formatVersion`**，严格身份必然不匹配，但同一生命周期的标题行
+  仍然有效（行版本 + schema 由注册表复核），这一级专门把这类历史会话的标题
+  捞回来，避免误显示为「未命名」；
+- seeded（继承日志）会话不读缓存：需要尾部读取，缓存无法提供。
 
 读不到的坏行**不失败整页**：返回 `readError` 字段，页面仍可对该行执行
 删除（自愈：删除时归档集合清理照常进行）。
