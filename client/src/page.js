@@ -17,13 +17,15 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 import { jsx, jsxs } from "react/jsx-runtime";
 import {
   Button,
-  IconArchiveOutline20,
-  IconEllipsisOutline16,
-  IconFolderClose16,
-  IconTrashOutline16,
   Menu,
   RiskConfirmation
 } from "@deepseek-ai/dsh-client-ui-primitives";
+import {
+  IconArchiveOutline,
+  IconEllipsisOutline,
+  IconFolderClose,
+  IconTrashOutline
+} from "./icons.js";
 import { installStyles } from "./styles.js";
 
 /** Format an absolute archive time in the local convention (zh: 2026年8月11日，14:17). */
@@ -103,7 +105,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
             variant: "outline",
             size: "sm",
             disabled: busy,
-            icon: jsx(IconArchiveOutline20, { size: 14 }),
+            icon: jsx(IconArchiveOutline, { size: 14 }),
             onClick: () => onUnarchive(item.sessionId),
             children: t("unarchive")
           }),
@@ -112,7 +114,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
             size: "sm",
             disabled: busy,
             className: "dshAcv-dangerButton",
-            icon: jsx(IconTrashOutline16, {}),
+            icon: jsx(IconTrashOutline, {}),
             onClick: () => onDelete(item),
             children: t("delete")
           })
@@ -130,12 +132,12 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
     {
       id: "unarchive",
       label: t("unarchiveAll"),
-      icon: jsx(IconArchiveOutline20, { size: 14 })
+      icon: jsx(IconArchiveOutline, { size: 14 })
     },
     {
       id: "delete",
       label: t("deleteAll"),
-      icon: jsx(IconTrashOutline16, {}),
+      icon: jsx(IconTrashOutline, {}),
       danger: true
     }
   ];
@@ -148,7 +150,7 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
         children: [
           jsx("span", {
             className: "dshAcv-groupIcon",
-            children: jsx(IconFolderClose16, { size: 14 })
+            children: jsx(IconFolderClose, { size: 14 })
           }),
           jsx("span", {
             className: "dshAcv-groupTitle",
@@ -178,7 +180,7 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
                 event.stopPropagation();
                 setMenuOpen((open) => !open);
               },
-              children: jsx(IconEllipsisOutline16, {})
+              children: jsx(IconEllipsisOutline, {})
             })
           })
         ]
@@ -277,7 +279,7 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
                 variant: "outline",
                 size: "sm",
                 disabled: snapshot.phase !== "ready" || snapshot.items.length === 0 || busyCount > 0,
-                icon: jsx(IconArchiveOutline20, { size: 14 }),
+                icon: jsx(IconArchiveOutline, { size: 14 }),
                 onClick: () => void page.unarchiveAll(undefined),
                 children: t("unarchiveAll")
               }),
@@ -286,7 +288,7 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
                 size: "sm",
                 disabled: snapshot.phase !== "ready" || snapshot.items.length === 0 || busyCount > 0,
                 className: "dshAcv-dangerButton",
-                icon: jsx(IconTrashOutline16, {}),
+                icon: jsx(IconTrashOutline, {}),
                 onClick: () => {
                   setConfirmAll({ cwd: undefined, title: t("heading"), count: snapshot.items.length });
                   setAcknowledged(false);
@@ -325,7 +327,7 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
       snapshot.phase === "ready" && groups.length === 0 && jsxs("div", {
         className: "dshAcv-state",
         children: [
-          jsx(IconArchiveOutline20, { size: 28, className: "dshAcv-stateIcon" }),
+          jsx(IconArchiveOutline, { size: 28, className: "dshAcv-stateIcon" }),
           jsx("p", { className: "dshAcv-stateText", children: t("empty") })
         ]
       }),

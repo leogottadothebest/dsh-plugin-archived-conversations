@@ -5,6 +5,43 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.6] - 2026-09-25
+
+### 修复
+
+- 适配 DSH core 0.1.7-rc.2（实测症状：宿主日志
+  `web boot: 1 entry did not activate / dsh-plugin-archived-conversations: failed`，
+  设置页整页不出现）。三处核心契约变更逐一适配：
+  - **Typert 清单改要 `create()` 工厂**：0.1.7-rc.2 的 loader 与 registry
+    校验 `codec.create` / `schema.create` 必须是函数，网关按
+    `codec.create().parse(value)` 解码，`schema` 字段不再被读取——客户端
+    `$mount` 与宿主 `./typert` 注册都会因此整体被拒。现在两半程的每个
+    wire codec 与 schema 记录同时携带 `schema`（≤0.1.5 读它）与
+    `create`（≥0.1.7-rc.2 读它），同一份清单在两个运行时都通过校验。
+  - **投影缓存冷读改按头部生命周期定位**：0.1.7-rc.2 把列表面从
+    `cachedSnapshot(meta, inheritedEventCount, keys?)` /
+    `cachedPredecessorTitle(meta, inheritedEventCount)` 改为
+    `cachedSnapshot(meta, keys?)` / `cachedPredecessorTitle(meta)`；旧的
+    cut 会被当作 `keys`（不可迭代的 brand 数字）抛错，整页每一行都退化成
+    「无法读取」。现按声明元数判别，只对仍要求 cut 的运行时传入。
+  - **primitives 图标整套改名**：0.1.7-rc.2 统一按笔画命名
+    （`IconArchiveOutline20` → `IconArchiveOutlineRegular`、
+    `IconTrashOutline16` → `IconTrashOutlineRegular` 等），带尺寸的旧名
+    全部移除。新增 `client/src/icons.js`，用 `??` 在两代命名间解析，同一份
+    产物在 0.1.5 线与 0.1.7-rc.2 线都能渲染。
+
+### 变更
+
+- 客户端构建冒烟测试升级为「物化 → 激活 → 渲染」三段式：在 mock 的客户端
+  Context 上真正执行一遍 `apply`，对 4 个页面状态 × 2 代 primitives 种子
+  渲染并遍历结果树，任何元素类型为 `undefined`（primitives 导出改名或移除
+  的直接症状）都会让构建失败；同时校验每个远程 codec 都带 `create()` 工厂、
+  样式表标签满足 `data-plugin`/`data-plugin-css` 契约，并在已安装
+  primitives 时把种子导出表与真实包的导出表交叉比对。
+- peer 依赖范围补充 `^0.1.7-rc.2`；devDependency
+  `@deepseek-ai/dsh-client-ui-primitives` 升到 `^0.1.7-rc.2`（构建期校验的
+  目标面）。
+
 ## [0.1.5] - 2026-09-16
 
 ### 修复

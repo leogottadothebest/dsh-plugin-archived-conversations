@@ -2,9 +2,11 @@ window.__ModuleLoader__.load({ id: "dsh-plugin-archived-conversations", factory:
 var module = { exports: {} };
 var exports = module.exports;
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name2 in all)
@@ -18,6 +20,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // client/src/index.js
@@ -18916,7 +18926,12 @@ var archivedIdsValue = external_exports.object({ sessionId, archivedSessionIds }
 var deleteValue = external_exports.object({ sessionId, deleted: external_exports.boolean() });
 var unarchiveAllValue = external_exports.object({ archivedSessionIds });
 var deleteAllValue = external_exports.object({ deleted: external_exports.number().int().nonnegative(), archivedSessionIds });
-var codec2 = (typeSymbol, schema) => ({ mode: "strict", typeSymbol, schema });
+var codec2 = (typeSymbol, schema) => ({
+  mode: "strict",
+  typeSymbol,
+  schema,
+  create: () => schema
+});
 var jsonParameter = (typeSymbol, schema) => ({
   name: "request",
   wire: "request",
@@ -19166,6 +19181,13 @@ var ArchivedConversationsController = class {
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+
+// client/src/icons.js
+var primitives = __toESM(require("@deepseek-ai/dsh-client-ui-primitives"), 1);
+var IconArchiveOutline = primitives.IconArchiveOutlineRegular ?? primitives.IconArchiveOutline20;
+var IconEllipsisOutline = primitives.IconEllipsisOutlineRegular ?? primitives.IconEllipsisOutline16;
+var IconFolderClose = primitives.IconFolderCloseRegular ?? primitives.IconFolderClose16;
+var IconTrashOutline = primitives.IconTrashOutlineRegular ?? primitives.IconTrashOutline16;
 
 // client/src/styles.js
 var STYLE_ID = "dsh-plugin-archived-conversations";
@@ -19519,7 +19541,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
             variant: "outline",
             size: "sm",
             disabled: busy,
-            icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconArchiveOutline20, { size: 14 }),
+            icon: (0, import_jsx_runtime.jsx)(IconArchiveOutline, { size: 14 }),
             onClick: () => onUnarchive(item.sessionId),
             children: t("unarchive")
           }),
@@ -19528,7 +19550,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
             size: "sm",
             disabled: busy,
             className: "dshAcv-dangerButton",
-            icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconTrashOutline16, {}),
+            icon: (0, import_jsx_runtime.jsx)(IconTrashOutline, {}),
             onClick: () => onDelete(item),
             children: t("delete")
           })
@@ -19544,12 +19566,12 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
     {
       id: "unarchive",
       label: t("unarchiveAll"),
-      icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconArchiveOutline20, { size: 14 })
+      icon: (0, import_jsx_runtime.jsx)(IconArchiveOutline, { size: 14 })
     },
     {
       id: "delete",
       label: t("deleteAll"),
-      icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconTrashOutline16, {}),
+      icon: (0, import_jsx_runtime.jsx)(IconTrashOutline, {}),
       danger: true
     }
   ];
@@ -19561,7 +19583,7 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
         children: [
           (0, import_jsx_runtime.jsx)("span", {
             className: "dshAcv-groupIcon",
-            children: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconFolderClose16, { size: 14 })
+            children: (0, import_jsx_runtime.jsx)(IconFolderClose, { size: 14 })
           }),
           (0, import_jsx_runtime.jsx)("span", {
             className: "dshAcv-groupTitle",
@@ -19591,7 +19613,7 @@ function ProjectGroup({ group, projects, t, lang, pending, onUnarchive, onDelete
                 event.stopPropagation();
                 setMenuOpen((open2) => !open2);
               },
-              children: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconEllipsisOutline16, {})
+              children: (0, import_jsx_runtime.jsx)(IconEllipsisOutline, {})
             })
           })
         ]
@@ -19671,7 +19693,7 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
                 variant: "outline",
                 size: "sm",
                 disabled: snapshot.phase !== "ready" || snapshot.items.length === 0 || busyCount > 0,
-                icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconArchiveOutline20, { size: 14 }),
+                icon: (0, import_jsx_runtime.jsx)(IconArchiveOutline, { size: 14 }),
                 onClick: () => void page.unarchiveAll(void 0),
                 children: t("unarchiveAll")
               }),
@@ -19680,7 +19702,7 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
                 size: "sm",
                 disabled: snapshot.phase !== "ready" || snapshot.items.length === 0 || busyCount > 0,
                 className: "dshAcv-dangerButton",
-                icon: (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconTrashOutline16, {}),
+                icon: (0, import_jsx_runtime.jsx)(IconTrashOutline, {}),
                 onClick: () => {
                   setConfirmAll({ cwd: void 0, title: t("heading"), count: snapshot.items.length });
                   setAcknowledged(false);
@@ -19712,7 +19734,7 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
       snapshot.phase === "ready" && groups.length === 0 && (0, import_jsx_runtime.jsxs)("div", {
         className: "dshAcv-state",
         children: [
-          (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconArchiveOutline20, { size: 28, className: "dshAcv-stateIcon" }),
+          (0, import_jsx_runtime.jsx)(IconArchiveOutline, { size: 28, className: "dshAcv-stateIcon" }),
           (0, import_jsx_runtime.jsx)("p", { className: "dshAcv-stateText", children: t("empty") })
         ]
       }),

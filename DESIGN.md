@@ -6,7 +6,8 @@
 ## 1. 背景与现状
 
 深入研读了 DSH core 0.1.5-rc.2（Desktop 2.0.10 集成环境）的核心实现后确认
-（初稿基线为 alpha.1 / Desktop 2.0.4，0.1.4 适配 0.1.2-rc.1 / 2.0.5）：
+（初稿基线为 alpha.1 / Desktop 2.0.4，0.1.4 适配 0.1.2-rc.1 / 2.0.5，0.1.6
+适配 0.1.7-rc.2）：
 
 - **归档能力已内建于工作区域（`dsh-workspace`）**：`WorkspaceRegistry`
   持有 registry 级持久状态 `archivedSessionIds`（`workspace.json` 的全局
@@ -70,6 +71,13 @@
   路径（见 `dsh-typert-loader` 文档：`./typert` 导出的 `TYPERT` 清单）。
 - 清单含 zod v4 严格 codec + 完整 FaceModel（services/members/types），
   全部通过 `dsh-typert-loader` 的校验规则。
+- **两代 codec 契约**：≤0.1.5 的 loader/registry 校验 `codec.schema.parse`
+  并以实例直接解析；≥0.1.7-rc.2 改为校验 `create()` 工厂，网关按
+  `codec.create().parse(value)` 解码，`schema` 字段不再被读取（缺
+  `create` 会让整份贡献被拒——客户端 `$mount` 与宿主 `./typert` 注册都
+  一样）。因此每个 codec 与每条 `TYPERT.schemas` 记录**同时**携带
+  `schema` 与 `create: () => schema`，指向同一个 zod v4 实例，两个运行时
+  都能通过，且没有哪个字段是空头承诺。
 - 网关解析顺序：先查严格描述符（本插件注册了），缺失时回落到 SRC 模式
   （`typertRemote` 绑定 + 方法签名推导）——双保险，即使某次升级收紧了
   清单校验，服务仍可被调用。
@@ -89,15 +97,26 @@
 
 - **live 会话**：`sessionProjections.cachedSnapshot(session)`；
 - **冷会话**：`sessionPersistence` 头（`registry.readSessionHeader`）+
-  `sessionProjectionCache.cachedSnapshot(header, SessionLogOffset(0))`
-  （`session_projcache` 持久投影缓存，按
-  `{formatVersion, createdAt, cwd, isSeeded, inheritedEventCount}` 身份
-  校验，绝不读错生命周期）；严格读取未命中时再退一级
-  `cachedPredecessorTitle(header, SessionLogOffset(0))`——**格式迁移前写入的
-  检查点没有 `formatVersion`**，严格身份必然不匹配，但同一生命周期的标题行
-  仍然有效（行版本 + schema 由注册表复核），这一级专门把这类历史会话的标题
-  捞回来，避免误显示为「未命名」；
+  投影缓存的持久检查点（`session_projcache`，绝不读错生命周期）；严格读取
+  未命中时再退一级 `cachedPredecessorTitle`——**格式迁移前写入的检查点没有
+  `formatVersion`**，严格身份必然不匹配，但同一生命周期的标题行仍然有效
+  （行版本 + schema 由注册表复核），这一级专门把这类历史会话的标题捞回来，
+  避免误显示为「未命名」；
 - seeded（继承日志）会话不读缓存：需要尾部读取，缓存无法提供。
+
+**清单面的两代签名**（0.1.6 适配）：
+
+| 运行时 | 严格读取 | 标题兜底 |
+| --- | --- | --- |
+| ≤ 0.1.5 | `cachedSnapshot(meta, inheritedEventCount, keys?)` | `cachedPredecessorTitle(meta, inheritedEventCount)` |
+| ≥ 0.1.7-rc.2 | `cachedSnapshot(meta, keys?)` | `cachedPredecessorTitle(meta)` |
+
+0.1.7-rc.2 把检查点改为仅凭头部生命周期（`formatVersion` / `createdAt` /
+`cwd` / `isSeeded`）定位——同一格式世代内 fork 截断点是固定的，区分不了别的
+生命周期，于是 cut 参数被移除；旧调用里的 cut 会被当成 `keys`（不可迭代的
+brand 数字）直接抛错，页面上表现为**每一行都「无法读取」**。判别用声明元数
+（`cachedSnapshot.length >= 3` 即旧面），只对仍要求 cut 的运行时传入，两代
+运行时都能拿到标题。
 
 读不到的坏行**不失败整页**：返回 `readError` 字段，页面仍可对该行执行
 删除（自愈：删除时归档集合清理照常进行）。
@@ -162,6 +181,14 @@ namespace/has/install/installDirect/installScoped/remove`），故删除方法
 - `id: "archived-conversations"`、`order: 30`（位于「插件」与市场页之间）；
 - 中英双语字典（`locale.register(NS, {zh, en})`，键集完全对齐）。
 
+**导航图标**：设置外壳按 section id 硬编码导航图标，第三方 section 落到
+通用的齿轮图标。0.1.7-rc.2 的外壳为 `id === "archived-sessions"` 预留了
+归档字形，但本插件**故意不改用该 id**——list 槽的同 id 注册会直接抛错，
+若将来官方真的落地一个同名 section，本插件会整体挂载失败；代价只是继续
+沿用 `nav-icon.js` 的 DOM 交换（MutationObserver + 兜底轮询，回调在绘制前
+的微任务里执行，首帧即为归档字形）。构建冒烟测试会断言 section id 未被
+悄悄改动。
+
 ### 4.3 页面
 
 - `useSyncExternalStore` 消费控制器快照：`{phase, items,
@@ -173,6 +200,11 @@ namespace/has/install/installDirect/installScoped/remove`），故删除方法
   确认），确认后调用 `deleteSession`。
 - 头部提供「全部取消归档」批量操作（客户端顺序调用，结束统一刷新）。
 - 空态 / 加载态 / 错误态（带重试）；操作结果用 5 秒自动消退的横幅反馈。
+- **图标跨两代命名**（`client/src/icons.js`）：≤0.1.5 的 primitives 用带
+  尺寸的名字（`IconArchiveOutline20`），0.1.7-rc.2 整套改成笔画名
+  （`IconArchiveOutlineRegular`）并删掉旧名。两者都是同一个平台种子模块，
+  缺席的那个只是 `undefined`，因此用 `??` 解析出**实际存在**的那个——否则
+  在某一代上元素类型为 `undefined`，React 直接抛错、整个设置页空白。
 
 ### 4.4 实时性
 
@@ -189,15 +221,18 @@ namespace/has/install/installDirect/installScoped/remove`），故删除方法
 ```
 package.json          # exports: "." / "./typert" / "./client"；dsh.bundle.patch + dsh.client.inject
 cordis.patch.yml      # bundle 补丁：insert 条目 {id: archived-conversations, name: 本包}
+scripts/build-client.mjs # 客户端打包 + 三段式冒烟测试（物化/激活/渲染 × 两代 primitives）
 lib/index.js          # 宿主入口 apply(ctx)
-lib/typert.js         # 宿主 TYPERT 清单（zod codec + FaceModel）
+lib/typert.js         # 宿主 TYPERT 清单（zod codec + FaceModel，schema/create 双轨）
 lib/remote.js         # ArchivedSessionsRemote
-client/index.js       # 客户端入口（$mount + 槽位注册）
-client/typert.js      # 客户端 TYPERT_REMOTE
-client/controller.js  # 页面控制器
-client/page.js        # React 设置页面
-client/locale.js      # zh/en 字典
-client/styles.js      # 注入式样式（dshAcv- 前缀）
+client/src/index.js   # 客户端入口（$mount + 槽位注册）；产物为 client/client.js
+client/src/typert.js  # 客户端 TYPERT_REMOTE
+client/src/controller.js # 页面控制器
+client/src/page.js    # React 设置页面
+client/src/icons.js   # primitives 图标的两代命名解析
+client/src/locale.js  # zh/en 字典
+client/src/styles.js  # 注入式样式（dshAcv- 前缀）
+client/src/nav-icon.js # 设置导航图标交换（按 section id 硬编码图标的外壳）
 ```
 
 安装方式与官方第三方插件一致，**两步缺一不可**：
@@ -224,5 +259,10 @@ client/styles.js      # 注入式样式（dshAcv- 前缀）
   时间」而非杜撰「归档时间」。
 - **客户端双刷新**：本页动作与 workspaces 订阅可能各触发一次刷新，
   幂等无害。
+- **两代契约并存**：清单的 `schema`/`create` 双轨、投影缓存的元数判别、
+  图标的两代命名解析，都是「一份产物服务两代运行时」的显式取舍——每处
+  只在对应运行时被读取，另一侧完全忽略，所以不存在行为分叉；代价是清单
+  多一个字段、几行判别代码，以及构建期必须对两代 primitives 种子各渲染
+  一遍（冒烟测试已覆盖）。
 - 插件不重写核心包；升级 DSH 后若内部面变化，`detachLiveSession` 会
   优雅降级为明确错误而非损坏数据。

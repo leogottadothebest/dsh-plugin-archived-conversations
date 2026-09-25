@@ -33,7 +33,19 @@ const deleteValue = z.object({ sessionId, deleted: z.boolean() });
 const unarchiveAllValue = z.object({ archivedSessionIds });
 const deleteAllValue = z.object({ deleted: z.number().int().nonnegative(), archivedSessionIds });
 
-const codec = (typeSymbol, schema) => ({ mode: "strict", typeSymbol, schema });
+/**
+ * One strict wire codec carrying the schema twice: `schema` for DSH core
+ * ≤ 0.1.5 (whose client registry validates `codec.schema.parse`) and `create`
+ * for DSH core ≥ 0.1.7-rc.2 (whose registry validates the factory). The mount
+ * is rejected outright by a registry that cannot find the field it expects,
+ * so both fields hand out the same zod v4 instance.
+ */
+const codec = (typeSymbol, schema) => ({
+  mode: "strict",
+  typeSymbol,
+  schema,
+  create: () => schema
+});
 const jsonParameter = (typeSymbol, schema) => ({
   name: "request",
   wire: "request",

@@ -78,6 +78,17 @@ interface ArchivedSessionItem {
 业务错误（`{ok:false, error:{code, message, details}}`）：
 `not-archived`、`live-detach-unsupported`、`unsupported-backend`。
 
+## 兼容性
+
+| DSH core | 状态 |
+| --- | --- |
+| `0.1.7-rc.2`（当前 Desktop） | ✅ 已验证（清单 `create()` 工厂 + 头部绑定的投影缓存 + 笔画名图标） |
+| `0.1.5-rc.2`（Desktop 2.0.10） | ✅ 兼容（`schema` codec + 带 cut 的投影缓存 + 尺寸名图标） |
+| `0.1.2-rc.1` 及更早 | 兼容（同上，旧线） |
+
+同一份产物在两条线上都能渲染与调用：wire codec 同时携带两个时代的字段，
+投影缓存按声明元数判别签名，图标按 `??` 在两代命名间解析。
+
 ## 开发
 
 宿主半程是纯 ESM（`lib/index.js`，`lib/typert.js` 经
@@ -89,9 +100,22 @@ interface ArchivedSessionItem {
 平台种子模块外部化）。
 
 ```bash
-pnpm run build:client            # 生成 client/client.js
-node --check lib/*.js            # 宿主语法检查
+pnpm run build:client            # 生成 client/client.js（含冒烟测试）
+pnpm run check                   # 构建 + 宿主语法检查（CI 跑的就是它）
 ```
+
+构建脚本自带三段式冒烟测试，任何一段失败都会让构建（以及 CI、`prepack`）
+失败：
+
+1. **物化**：产物必须注册 `window.__ModuleLoader__.load({id, factory})`
+   工厂并导出 `apply`/`inject`；
+2. **激活**：在 mock 的客户端 Context 上真正跑一遍 `apply`——校验
+   `settings.section` 注册、每个远程 codec 都带 `create()` 工厂、
+   样式表标签满足 `data-plugin`/`data-plugin-css` 契约；
+3. **渲染**：对 4 个页面状态 × 2 代 primitives 种子（尺寸名 / 笔画名）
+   各渲染一遍并遍历结果树，任何元素类型为 `undefined` 立即失败——这正是
+   primitives 导出改名在浏览器里的症状（整页空白）。种子导出表还会与已
+   安装的 `@deepseek-ai/dsh-client-ui-primitives` 真实导出表交叉比对。
 
 改完客户端源码后需重新构建并重装（`file:` 安装时 pnpm 会重新复制包）。
 
