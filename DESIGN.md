@@ -159,6 +159,28 @@ rc 线起取代旧名 `TypertRemoteFailure`；判别一律走结构标记
 - `live-detach-unsupported` —— 构建版本收紧了内部面，建议稍后重试；
 - `unsupported-backend` —— 持久化后端不暴露会话产物路径。
 
+### 3.6 宿主调用约定：服务类不得使用 `#` 私有成员
+
+这是本项目踩过的最隐蔽的一个坑，值得单独记下来：
+
+- Cordis 把服务交给调用方时**不是原始实例**，而是 traceable `Proxy`
+  （`Context.get()` → `getTraceable` → `createTraceable`）；
+- Typert 网关派发远程方法用的是
+  `Reflect.apply(method, ctx.get(serviceKey), args)` —— **`this` 就是那个
+  Proxy**；
+- JS 的 `#` 私有成员走 V8 品牌检查，而**品牌检查不穿透 Proxy**，于是
+  `this.#coldProjections(...)` 抛
+  `TypeError: Receiver must be an instance of class ArchivedSessionsRemote`。
+
+症状极具误导性：设置页照常渲染、`list` 照常返回行，只是**每一行都带
+`readError`**（「无法读取：Receiver must be an instance of class
+ArchivedSessionsRemote」），看起来像数据坏了而不是调用约定问题；批量操作
+（`unarchiveAll` / `deleteAll`）同样整条失败。官方宿主服务里 `this.#x`
+的出现次数是 **0** —— 这正是该约束从未被文档化、却必须遵守的原因。
+
+因此：**服务类的内部状态一律用普通成员**（本项目用下划线前缀表达「内部」
+语义），`scripts/check-host.mjs` 在 `pnpm check` / CI 里守这条线。
+
 ## 4. 客户端设计
 
 ### 4.1 命名空间挂载
@@ -222,6 +244,7 @@ namespace/has/install/installDirect/installScoped/remove`），故删除方法
 package.json          # exports: "." / "./typert" / "./client"；dsh.bundle.patch + dsh.client.inject
 cordis.patch.yml      # bundle 补丁：insert 条目 {id: archived-conversations, name: 本包}
 scripts/build-client.mjs # 客户端打包 + 三段式冒烟测试（物化/激活/渲染 × 两代 primitives）
+scripts/check-host.mjs   # 宿主守卫：服务类不得出现 `#` 私有成员（见 3.6）
 lib/index.js          # 宿主入口 apply(ctx)
 lib/typert.js         # 宿主 TYPERT 清单（zod codec + FaceModel，schema/create 双轨）
 lib/remote.js         # ArchivedSessionsRemote

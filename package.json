@@ -77,7 +77,7 @@
   },
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
-    "check": "node scripts/build-client.mjs && node --check lib/index.js && node --check lib/remote.js && node --check lib/typert.js && node --check lib/times.js",
+    "check": "node scripts/build-client.mjs && node scripts/check-host.mjs && node --check lib/index.js && node --check lib/remote.js && node --check lib/typert.js && node --check lib/times.js",
     "prepack": "npm run check"
   }
 }

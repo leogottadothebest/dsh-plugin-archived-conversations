@@ -29,6 +29,16 @@
     `IconTrashOutline16` → `IconTrashOutlineRegular` 等），带尺寸的旧名
     全部移除。新增 `client/src/icons.js`，用 `??` 在两代命名间解析，同一份
     产物在 0.1.5 线与 0.1.7-rc.2 线都能渲染。
+- 修复设置页每一行都显示「无法读取：Receiver must be an instance of class
+  ArchivedSessionsRemote」（批量操作同样会失败）：宿主服务类使用了 `#`
+  私有成员，而 Cordis 的 `Context.get()` 会把服务包成 traceable `Proxy`
+  （`getTraceable` → `createTraceable`），Typert 网关又用
+  `Reflect.apply(method, ctx.get(serviceKey), args)` 派发——`this` 因此是
+  那个 Proxy，V8 的私有品牌检查在 Proxy 上必然抛错。官方宿主服务里
+  `this.#x` 出现次数为 0，这也是它一直没被发现的原因。现把
+  `_coldProjections` / `_matchProject` / `_lastArchived` 换成普通
+  下划线成员，并在 `scripts/check-host.mjs` 加了构建期守卫（`pnpm check`
+  与 CI 都会跑），`#` 一旦回归即失败。
 
 ### 变更
 
@@ -41,6 +51,8 @@
 - peer 依赖范围补充 `^0.1.7-rc.2`；devDependency
   `@deepseek-ai/dsh-client-ui-primitives` 升到 `^0.1.7-rc.2`（构建期校验的
   目标面）。
+- `pnpm run check` 新增宿主守卫 `scripts/check-host.mjs`（服务类禁用 `#`
+  私有成员，附失败原因的完整说明）；CI 无需改动，跑的就是这条命令。
 
 ## [0.1.5] - 2026-09-16
 
