@@ -7,7 +7,7 @@
 
 深入研读了 DSH core 0.1.5-rc.2（Desktop 2.0.10 集成环境）的核心实现后确认
 （初稿基线为 alpha.1 / Desktop 2.0.4，0.1.4 适配 0.1.2-rc.1 / 2.0.5，0.1.6
-适配 0.1.7-rc.2）：
+适配 0.1.7-rc.2，0.1.7 适配 0.2.0-rc.2）：
 
 - **归档能力已内建于工作区域（`dsh-workspace`）**：`WorkspaceRegistry`
   持有 registry 级持久状态 `archivedSessionIds`（`workspace.json` 的全局
@@ -180,6 +180,44 @@ ArchivedSessionsRemote」），看起来像数据坏了而不是调用约定问�
 
 因此：**服务类的内部状态一律用普通成员**（本项目用下划线前缀表达「内部」
 语义），`scripts/check-host.mjs` 在 `pnpm check` / CI 里守这条线。
+
+### 3.7 装配约定：peer 范围是插件的开关
+
+0.1.7 适配 0.2.0-rc.2 时踩到的第二个「静默失败」坑，性质和 3.6 一样：
+**调用面全对，插件却整个不存在。**
+
+DSH core 0.2.0-rc.2 的 profile loader 在装配 bundle 时先做兼容性判定
+（`dsh-app-boot` 的 `evaluatePluginCompatibility`）：
+
+```js
+semver.satisfies(runtimeVersion, peerRange, { includePrerelease: true })
+```
+
+只要**任何一个** `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 不匹配，
+`loadProfileDirectory` 就把这个 bundle 丢进 `skippedBundles` ——
+不抛错、不提示，只是「没加载」：
+
+```
+skipping profile bundle "dsh-plugin-archived-conversations": Plugin
+dsh-plugin-archived-conversations@0.1.6 is incompatible with dsh 0.2.0-rc.2:
+peerDependencies {...}. Running it may cause crashes or data loss. …
+```
+
+陷阱在于 semver 的 caret 语义：`^0.1.7-rc.2` 展开为
+`>=0.1.7-rc.2 <0.2.0-0`，**不含下一个次版本行**，而
+`includePrerelease: true` 只影响 prerelease 的比较、不放宽上界。于是
+0.1.6 在 0.2.0-rc.2 上「什么都没坏、却整个消失」——实测确认：升级
+0.1.7 前后，对同一个 profile 调用 core 自己的 `loadProfileDirectory`，
+`layers` 从 `[dsh-base, dsh-web-app]` + `skipped: [本插件]` 变成
+`[dsh-base, dsh-web-app, dsh-plugin-archived-conversations]` +
+`skipped: []`。
+
+因而：**支持矩阵与 peer 范围必须一起改**。
+`scripts/check-peers.mjs` 用与 core 完全相同的判据
+（`semver.satisfies(v, range, { includePrerelease: true })`，避免自造近似
+实现）把 `SUPPORTED_CORE_VERSIONS` 逐条对着每个 dsh peer 范围验一遍，
+`pnpm check` / CI 都会跑；漏改任何一边都会在构建期失败并直接给出
+「把范围改成什么」的具体文本。
 
 ## 4. 客户端设计
 

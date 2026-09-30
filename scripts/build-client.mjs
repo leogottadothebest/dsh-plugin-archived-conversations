@@ -30,6 +30,8 @@
  *     settings panel in the browser; the same walk also asserts that every
  *     wire codec the client mount hands the Remote gateway carries the
  *     factory DSH core ≥ 0.1.7-rc.2 validates (`create()`, not `schema`).
+ *     Every supported line is walked separately — 0.1.5, 0.1.7-rc.2, and
+ *     0.2.0-rc.2 (the current Desktop runtime).
  *
  * Run: `pnpm run build:client` (or `node scripts/build-client.mjs`).
  */
@@ -78,12 +80,14 @@ const artifact = [
 ].join("\n");
 
 /**
- * The platform seed's `@deepseek-ai/dsh-client-ui-primitives` surface, in both
- * naming eras this bundle supports. DSH core ≤ 0.1.5 shipped size-suffixed
- * icon names; 0.1.7-rc.2 renamed the set after its stroke weight and dropped
- * the numeric spellings. Each member is a distinct identity (or a real value),
- * so the render walk below tells a live component from the `undefined` a
- * renamed/removed export produces.
+ * The primitives seed's `@deepseek-ai/dsh-client-ui-primitives` surface, in
+ * every naming era this bundle supports. DSH core ≤ 0.1.5 shipped
+ * size-suffixed icon names; 0.1.7-rc.2 renamed the set after its stroke
+ * weight and dropped the numeric spellings, and 0.2.0-rc.2 kept that surface
+ * unchanged (the package's only 0.1.7-rc.2 → 0.2.0-rc.2 diffs are additive:
+ * `MenuGroup`/`observeStickyMenuGroups`, `pointerModality`). Each member is a
+ * distinct identity (or a real value), so the render walk below tells a live
+ * component from the `undefined` a renamed/removed export produces.
  */
 function primitivesSeed(era) {
   const icon = (name) => function NamedIcon() {};
@@ -109,10 +113,19 @@ function primitivesSeed(era) {
   };
 }
 
-/** The primitives eras the artifact must render against, oldest first. */
+/**
+ * The primitives eras the artifact must render against, oldest first. The
+ * last entry is the line this build targets — `assertSeedMatchesPackage`
+ * below cross-checks its seed against the installed package, so it must
+ * mirror that package's surface. 0.1.7-rc.2 and 0.2.0-rc.2 share one naming
+ * era; they are listed separately so a future divergence, or a failure in the
+ * render walk, names the line it belongs to instead of blaming "the newest
+ * ones".
+ */
 const ERAS = [
   { name: "0.1.5 (size-suffixed icons)", seed: primitivesSeed("size-suffixed") },
-  { name: "0.1.7-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") }
+  { name: "0.1.7-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") },
+  { name: "0.2.0-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") }
 ];
 
 /**
@@ -124,12 +137,15 @@ const ERAS = [
  * then fails here — naming the symbol — rather than in the browser, where the
  * only symptom is a blank settings panel. A checkout without node_modules
  * skips the check and still gets the render walk.
+ * @returns the installed version the newest era's seed was validated against,
+ * or undefined when the package is not installed.
  */
 function assertSeedMatchesPackage() {
-  const entry = join(root, "node_modules/@deepseek-ai/dsh-client-ui-primitives/lib/index.js");
+  const dir = join(root, "node_modules/@deepseek-ai/dsh-client-ui-primitives");
+  const entry = join(dir, "lib/index.js");
   if (!existsSync(entry)) {
     console.warn("warning: @deepseek-ai/dsh-client-ui-primitives is not installed; skipping the seed/package export cross-check (run pnpm install)");
-    return;
+    return undefined;
   }
   const statement = /export \{([\s\S]*?)\};/.exec(readFileSync(entry, "utf8"));
   if (statement === null) throw new Error("could not read the export list of @deepseek-ai/dsh-client-ui-primitives");
@@ -140,8 +156,10 @@ function assertSeedMatchesPackage() {
       throw new Error(`primitives seed "${name}" (${newest.name}) is not exported by @deepseek-ai/dsh-client-ui-primitives — the platform symbol was renamed or removed, so the bundle would render it as an undefined element type`);
     }
   }
+  const version = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version;
+  return version;
 }
-assertSeedMatchesPackage();
+const primitivesVersion = assertSeedMatchesPackage();
 
 /**
  * Materialize the artifact in its own realm against one era's seeds and run
@@ -320,4 +338,7 @@ for (const era of ERAS) {
 
 const outPath = join(root, "client/client.js");
 writeFileSync(outPath, artifact);
-console.log(`built ${outPath} (${Buffer.byteLength(artifact)} bytes; smoke test: materialization + activation + ${SNAPSHOTS.length} render phases × ${ERAS.length} primitives eras OK; externals: ${externals.join(", ")})`);
+const seedCheck = primitivesVersion === undefined
+  ? "seed/package cross-check skipped"
+  : `newest seed ⊆ @deepseek-ai/dsh-client-ui-primitives@${primitivesVersion}`;
+console.log(`built ${outPath} (${Buffer.byteLength(artifact)} bytes; smoke test: materialization + activation + ${SNAPSHOTS.length} render phases × ${ERAS.length} primitives eras OK; ${seedCheck}; externals: ${externals.join(", ")})`);

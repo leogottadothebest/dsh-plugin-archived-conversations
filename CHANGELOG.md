@@ -5,6 +5,59 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-09-30
+
+### 修复
+
+- 适配 DSH core 0.2.0-rc.2（实测症状：**插件整个不加载**——设置页没有
+  「已归档对话」入口，但没有任何报错、弹窗或宿主日志告警）。根因是
+  0.2.0-rc.2 起 profile loader 会在装配前做 peer 兼容性判定
+  （`dsh-app-boot` 的 `evaluatePluginCompatibility`：对运行时版本跑
+  `semver.satisfies(runtime, peerRange, { includePrerelease: true })`），
+  任一 `@deepseek-ai/dsh*` peer 不匹配就把整个 bundle 丢进 `skippedBundles`
+  ——静默跳过。而 `^0.1.7-rc.2` 展开为 `>=0.1.7-rc.2 <0.2.0-0`，**不含
+  0.2.x 行**，`includePrerelease` 也不放宽上界。现把
+  `@deepseek-ai/dsh-session` / `@deepseek-ai/dsh-typert-protocol` /
+  `@deepseek-ai/dsh-storage-domain` 三个 peer 范围补上 `|| ^0.2.0-rc.2`。
+  实测：对同一个 profile 调用 core 自身的 `loadProfileDirectory`，
+  `layers` 由 `[dsh-base, dsh-web-app]` + `skipped: [本插件]` 变为
+  `[dsh-base, dsh-web-app, dsh-plugin-archived-conversations]` +
+  `skipped: []`。
+- 修复 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 写法：同一包
+  写两条 `- 'pkg@version'` 时**只有第一条生效**——pnpm 的
+  `evaluateVersionPolicy` 匹配到第一个同名规则就 `return`，第二条是死代码，
+  结果是改动 primitives devDependency 后本地 `pnpm install` 与 CI 的
+  lockfile 供应链策略校验直接失败。现改为单条规则 + `||` 版本并集
+  （`'@deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 || 0.2.0-rc.2'`），
+  并在文件里写明原因；`pnpm install` 与 `pnpm install --frozen-lockfile`
+  两条路径均已验证通过。
+
+### 变更
+
+- **新增构建期守卫 `scripts/check-peers.mjs`**：用与 core 完全相同的判据
+  （`semver.satisfies(..., { includePrerelease: true })`，不自造近似实现）
+  把 `SUPPORTED_CORE_VERSIONS`（`0.1.2-rc.1` / `0.1.5-rc.2` / `0.1.7-rc.2`
+  / `0.2.0-rc.2`）逐条对着 package.json 里每个 dsh peer 范围校验，失败时
+  直接给出「把范围改成什么」的具体文本。支持矩阵与 peer 范围从此不可能
+  各自漂移；`pnpm run check` 与 CI 都会跑。
+- 客户端冒烟测试的 primitives 种子加入第三代
+  `0.2.0-rc.2（笔画名）`（构建输出改为
+  `4 render phases × 3 primitives eras`）；种子导出表交叉比对的目标升级为
+  已安装的 `@deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.2`，并在构建日志
+  里打印实际校验到的版本。devDependency 同步升到 `^0.2.0-rc.2`。
+- 新增 devDependency `semver@^7.7.0`（仅供 `check-peers.mjs` 使用）。
+- 0.2.0-rc.2 的宿主/客户端契约逐项核对**无变化**，因此本次不需要改动
+  `lib/` 与 `client/src/` 的任何代码：`dsh-session` /
+  `dsh-typert-protocol` / `dsh-storage-domain` / `dsh-workspace` 的
+  `lib/` 产物与 0.1.7-rc.2 逐字节相同；primitives 的两处差异是纯增量
+  （新增 `MenuGroup` / `observeStickyMenuGroups` / `pointerModality`）；
+  `dsh-client-modules`（`window.__ModuleLoader__` 契约）与
+  `dsh-client-ui-slots` 逐字节相同；设置外壳的 `settings.section` 槽位、
+  `id === "archived-sessions"` 的导航图标预留、`role="dialog" nav` 结构
+  均未变。已实测：本插件的宿主 `./typert` 清单与客户端 contribution 都被
+  0.2.0-rc.2 自己的 `TypertRegistry` 接受（严格 codec / schema / 调用描述
+  全部通过）。发布产物 `client/client.js` 因此逐字节不变。
+
 ## [0.1.6] - 2026-09-25
 
 ### 修复

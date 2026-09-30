@@ -1,5 +1,14 @@
 autoInstallPeers: false
 allowBuilds:
   esbuild: true
+# pnpm's supply-chain age policy (minimumReleaseAge) rejects freshly published
+# versions; the primitives package is a build-time contract target pinned to
+# the DSH core line this plugin targets, so each bump must be listed here.
+#
+# ONE RULE PER PACKAGE, versions unioned with `||`. pnpm's
+# `evaluateVersionPolicy` returns the FIRST rule whose package name matches and
+# stops looking, so a second `- 'pkg@version'` entry for the same package is
+# dead code — the exclude silently does nothing and the install/CI lockfile
+# check fails. `parseExactVersionsUnion` is what makes the union form work.
 minimumReleaseAgeExclude:
-  - '@deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2'
+  - '@deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 || 0.2.0-rc.2'
