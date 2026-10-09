@@ -137,16 +137,47 @@ brand 数字）直接抛错，页面上表现为**每一行都「无法读取」
    抛 `live-detach-unsupported` 业务错误，绝不下坏手。
 4. **删文件**：`sessionPersistence.locate(header)`（jsonl 后端公开的
    路径解析）得到 `session.jsonl.zstd` 路径，递归删除其目录。
-   后端无 `locate` 时抛 `unsupported-backend`。
-5. **registry 清理**（一次 `enqueueOperation` 内，与其它工作区写串行）：
+   后端无 `locate` 时抛 `unsupported-backend`。**只有** `readSessionHeader`
+   读不到（存档条目本身已损坏、产物早就不在了）才继续往下走做自愈清理；
+   真正的删除失败（权限等）直接上抛，绝不能一边报错一边把会话移出归档集合
+   ——那等于把「删除失败」变成「对话被放出归档」。
+5. **通告移除**：`ctx.emit("api-session/removed", id)`，**必须在第 6 步之前**。
+6. **registry 清理**（一次 `enqueueOperation` 内，与其它工作区写串行）：
    - `setState` 从 `archivedSessionIds` 移除；
    - 遍历 `registry.list()`，命中 `entity.sessionIds` 的实体调用
      `entity.detachSession(id)`（工作区记账清理）。
    - `session_projcache` 无需清理：投影缓存行带身份校验，孤儿行天然
      失效（"possibly stale but never wrong"）。
 
-域写经由 `domain.global.set` → 广播 `domain/changed` → 工作区 feed
-重投影 → 客户端列表/侧边栏自动消失，无需插件再通知任何一方。
+#### 为什么第 5 步不可省（0.1.8 修复）
+
+初版设计这里有一句想当然的结论：「域写 → `domain/changed` → 工作区 feed
+重投影 → 客户端列表/侧边栏自动消失，无需插件再通知任何一方」。**这是错的**，
+症状就是「点删除后对话回到了未分组」：
+
+- 客户端的**会话列表是一份快照**，只由 `api-session/added` /
+  `api-session/removed` 增量维护（`dsh-api-session-controller` 的
+  `sessions.handleSessionRemoved`）。`domain/changed` 更新的是**归档集合与
+  工作区记账**，不是会话列表本身。
+- 侧边栏渲染时才做过滤与分组（`dsh-client-ui-workspace` 的
+  `groupByWorkspace` / `sessionVisible`）：已归档的行被隐藏，
+  **没有任何工作区记账的行归入「未分组」桶**。
+- `api-session/removed` 只由 core 在 `session/disposed` 时发出，即
+  **只对 live 会话**。归档对话绝大多数是 cold 会话——第 3 步根本不执行。
+
+于是对 cold 会话：删文件（不发事件）→ 移出归档集合（该行重新「可见」）→
+从工作区 `sessionIds` 摘除（该行变成「无归属」）——客户端列表里那行还在，
+正好落进「未分组」。**删除反而让对话回来了。**
+
+`api-session/removed` 在 core 的 forwarded-Host-event 白名单里
+（`dsh-api-remotes` 的 `API_REMOTE_FORWARDED_EVENTS`，mode `emit`；监听就是
+根上下文上的普通 `ctx.on`），因此从本插件的服务上下文 `emit` 能被同一个
+转发源接住并送到每个客户端——已实测（子上下文 emit → 真实转发源 →
+`{event:"api-session/removed",args:["session-…"]}`）。live 会话在第 3 步已由
+`session/disposed` 发过一次，重复一次在客户端幂等（删一个已不存在的行）。
+
+`scripts/check-host.mjs` 把这条契约钉在构建期：`lib/remote.js` 里这条
+`emit` 一旦消失，`pnpm run check` 与 CI 立即失败并给出恢复文本。
 
 ### 3.5 错误语义
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-archived-conversations",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "DeepSeek Harness 插件：在设置界面管理已归档对话——取消归档与永久删除。DeepSeek Harness plugin: manage archived conversations in Settings — unarchive and permanently delete.",
   "license": "MIT",
   "author": {

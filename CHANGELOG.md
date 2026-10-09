@@ -5,6 +5,46 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.8] - 2026-09-30
+
+### 修复
+
+- **删除对话后它却「回到未分组」**（实测症状：在设置页点删除，插件页里该行
+  消失，但侧边栏把它重新显示在「未分组」桶里）。根因是删除路径漏了**通知
+  客户端**这一步：
+
+  - 客户端的会话列表是一份**快照**，只由 `api-session/added` /
+    `api-session/removed` 增量维护；侧边栏在渲染时用 `sessionVisible`
+    过滤掉已归档的行，并把**没有任何工作区记账**的行归入「未分组」。
+  - 而 `api-session/removed` 只由 core 在 `session/disposed` 时发出，
+    也就是**只对 live 会话**发出。归档对话绝大多数是 cold 会话。
+  - 于是删除一个 cold 归档对话时：删文件（无事件）→ 移出归档集合（该行
+    重新「可见」）→ 从工作区 `sessionIds` 摘除（该行变成「无归属」）——
+    客户端列表里那行还在，正好落进「未分组」。删除反而让对话回来了。
+
+  现在 `deleteSession` 在**移除产物之后、改动归档集合/工作区记账之前**
+  显式发出 `this.ctx.emit("api-session/removed", sessionId)`。该事件在 core
+  的 forwarded-Host-event 白名单里（`dsh-api-remotes`），客户端由
+  `ctx.remote.$on("api-session/removed", …)` → `sessions.handleSessionRemoved`
+  消费（按 id 删行）。已实测：从一个**子插件上下文**发出的同一事件会被真实
+  的 `dsh-api-remotes` 转发源接住并交给客户端传输
+  （`{event:"api-session/removed",args:["session-…"]}`）。live 会话本来就由
+  `session/disposed` 发出过一次，重复的一次在客户端是幂等的（删一个已经
+  不存在的行）。
+- **删除失败不再静默半途生效**：产物删除失败时，原实现只记一条 warn 就继续
+  把该会话移出归档集合并摘除工作区记账——结果是「删除失败」却把对话从归档里
+  放了出来，同样表现为回到「未分组」。现在只有**存档条目本身已损坏**
+  （`readSessionHeader` 读不到，说明产物早就不在了）才继续自愈清理；真正的
+  删除失败（权限等）会作为业务错误上抛，归档条目保持不变（仍被归档隐藏，
+  可重试）。`unsupported-backend` 语义不变。
+
+### 变更
+
+- `scripts/check-host.mjs` 增加第二条构建期守卫：`lib/remote.js` 必须保留
+  `api-session/removed` 通告（去掉即失败，并直接给出恢复文本），把上面这条
+  契约钉在 `pnpm run check` / CI 里。
+- 客户端产物 `client/client.js` 未变（本次只动宿主半程）。
+
 ## [0.1.7] - 2026-09-30
 
 ### 修复
