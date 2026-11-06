@@ -11,4 +11,4 @@ allowBuilds:
 # dead code — the exclude silently does nothing and the install/CI lockfile
 # check fails. `parseExactVersionsUnion` is what makes the union form work.
 minimumReleaseAgeExclude:
-  - '@deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 || 0.2.0-rc.2'
+  - '@deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.2-rc.1'

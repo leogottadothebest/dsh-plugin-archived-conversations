@@ -7,7 +7,7 @@
 
 深入研读了 DSH core 0.1.5-rc.2（Desktop 2.0.10 集成环境）的核心实现后确认
 （初稿基线为 alpha.1 / Desktop 2.0.4，0.1.4 适配 0.1.2-rc.1 / 2.0.5，0.1.6
-适配 0.1.7-rc.2，0.1.7 适配 0.2.0-rc.2）：
+适配 0.1.7-rc.2，0.1.7 适配 0.2.0-rc.2，0.1.9 适配 0.2.2-rc.1）：
 
 - **归档能力已内建于工作区域（`dsh-workspace`）**：`WorkspaceRegistry`
   持有 registry 级持久状态 `archivedSessionIds`（`workspace.json` 的全局
@@ -272,13 +272,37 @@ namespace/has/install/installDirect/installScoped/remove`），故删除方法
 - `id: "archived-conversations"`、`order: 30`（位于「插件」与市场页之间）；
 - 中英双语字典（`locale.register(NS, {zh, en})`，键集完全对齐）。
 
-**导航图标**：设置外壳按 section id 硬编码导航图标，第三方 section 落到
-通用的齿轮图标。0.1.7-rc.2 的外壳为 `id === "archived-sessions"` 预留了
-归档字形，但本插件**故意不改用该 id**——list 槽的同 id 注册会直接抛错，
-若将来官方真的落地一个同名 section，本插件会整体挂载失败；代价只是继续
-沿用 `nav-icon.js` 的 DOM 交换（MutationObserver + 兜底轮询，回调在绘制前
-的微任务里执行，首帧即为归档字形）。构建冒烟测试会断言 section id 未被
-悄悄改动。
+**导航图标**：DSH core ≥ 0.2.2-rc.1 的外壳声明了 `settings.section.icon`
+list 槽（`dsh-client-ui-settings-general`），并**按 section id 寻址**：
+
+```jsx
+<span className="navIcon" aria-hidden="true">
+  {renderSlot("settings.section.icon", { size: 16, active },
+              { only: row.id, fallback: navIcon(row.id) })}
+</span>
+<span className="navLabel">{row.label}</span>
+```
+
+因此本插件注册第二个槽位条目（`client/src/section-icon.js`）：
+`id` 必须与 `settings.section` 的 id **完全相同**（外壳只渲染 id 匹配的
+条目），`order: 30`。字形由外壳放进它自己的 16px 图标单元里，行的 flex
+几何与第一方各行**逐字节相同**：`12px` padding + `16px` 图标 + `8px` gap
+→ 标签左边界 36px，不可能错位。两个 id 共用 `index.js` 的 `SECTION_ID`
+常量，构建冒烟测试还会断言两者相等，防止悄悄漂移。
+
+**旧线回退（≤ 0.2.0）**：那些外壳没有图标槽，第三方 section 只能拿到齿轮。
+`client/src/nav-icon.js` 保留 DOM 交换，但修正了两处致命细节：
+
+1. **绝不新增 flex 子元素。** 旧实现往按钮里 `insertBefore` 一个新的
+   `<span>`，于是多出一份宽度**和**一个 gap —— 这正是「已归档对话」比其它
+   设置项右移 8–24px 的原因。现在把字形插进**外壳自己的图标单元内部**
+   （隐藏齿轮后该单元仍是 16px），行几何不变。
+2. **外壳能渲染槽位时立即让位。** 槽位图标带 `data-dshacv-icon-slot`
+   标记，`nav-icon.js` 见到任何 dialog 里已有该标记就直接跳过整套交换——
+   一份产物同时适配新旧两条线，新线上完全不碰 DOM。
+
+> 为什么不改用外壳预留的 `id === "archived-sessions"`：list 槽同 id 注册会
+> 直接抛错，若官方将来真的落地一个同名 section，本插件会整体挂载失败。
 
 ### 4.3 页面
 

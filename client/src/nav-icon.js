@@ -1,22 +1,36 @@
 /**
- * dsh-plugin-archived-conversations — settings nav icon swap.
+ * dsh-plugin-archived-conversations — legacy settings nav-icon swap.
  *
- * The settings shell hardcodes nav icons per section id and offers no icon
- * option for third-party sections, so this section would show the generic
- * gear. This module swaps the gear for the archive glyph on the nav row
- * whose label matches this plugin's section label.
+ * DSH core ≥ 0.2.2-rc.1 ships a first-party icon slot (`settings.section.icon`)
+ * and the client registers into it — see `section-icon.js`. This module is the
+ * **fallback for older cores** (≤ 0.2.0), whose settings shell hardcodes nav
+ * icons per section id and offers no extension point, so a third-party section
+ * gets the generic gear.
  *
- * Installed from the client apply — not from the page component — so the
- * swap applies as soon as the settings panel opens, regardless of which
- * section is active. The swap is driven by a MutationObserver (callbacks
- * run as microtasks before the next paint), so the archive glyph lands in
- * the same frame the panel first renders — no gear flash. A slow safety
- * poll and the idempotent per-row check make it self-healing across panel
- * remounts, locale changes, and React reconciliation; it no-ops when no
- * row matches.
+ * Two lessons are baked into it:
+ *
+ *  1. **Never add a flex child to the nav button.** The shell's row is
+ *     `[icon cell][8px gap][label]`; inserting a sibling `<span>` next to the
+ *     icon cell adds its width *and* another gap, which is exactly what pushed
+ *     this plugin's label ~8–24px right of every other row. The glyph is
+ *     therefore inserted **inside** the shell's own icon cell, replacing the
+ *     hidden gear, so the row's flex geometry stays byte-identical to its
+ *     neighbours.
+ *  2. **Defer to the shell when it handles the icon.** On cores that render
+ *     the slot, `section-icon.js` already put the archive glyph in that cell
+ *     (marked with `data-dshacv-icon-slot`); swapping again could only double
+ *     it, so any dialog containing the marker is skipped outright.
+ *
+ * Installed from the client apply — not from the page component — so the swap
+ * applies as soon as the settings panel opens, regardless of which section is
+ * active. A MutationObserver runs as a microtask before the next paint (no
+ * gear flash), a slow safety poll covers remounts/reconnections, and the
+ * idempotent per-row check makes the whole thing self-healing across locale
+ * changes and React reconciliation. It no-ops when no row matches.
  *
  * @module dsh-plugin-archived-conversations/client/nav-icon
  */
+import { ICON_SLOT_MARKER } from "./section-icon.js";
 
 const ARCHIVE_ICON_SVG = [
   '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">',
@@ -26,9 +40,8 @@ const ARCHIVE_ICON_SVG = [
 ].join("");
 
 /**
- * Install the nav-icon swap. Reacts to DOM changes in the same frame the
- * settings panel first renders, and swaps the gear for the archive glyph on
- * the matching nav row.
+ * Install the legacy nav-icon swap for cores without `settings.section.icon`.
+ * Reacts to DOM changes in the same frame the settings panel first renders.
  * @param readLabel - reader for the section's nav label in the active locale.
  * @returns a disposer.
  */
@@ -39,16 +52,24 @@ export function installNavIcon(readLabel) {
     if (disposed) return;
     const label = readLabel();
     for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      // The shell rendered our slot icon: it owns the cell, leave it alone.
+      if (dialog.querySelector(`[${ICON_SLOT_MARKER}]`) !== null) continue;
       for (const button of dialog.querySelectorAll("nav button")) {
         const spans = [...button.children].filter((child) => child.tagName === "SPAN");
         if (!spans.some((span) => span.textContent === label)) continue;
         if (button.querySelector(".dshAcv-navIcon") !== null) continue;
-        const gear = button.querySelector("svg");
+        // The icon cell is the span that owns the glyph. Inserting INSIDE it
+        // (rather than beside it) is what keeps the label aligned: the cell
+        // keeps its 16px box and the row keeps its single 8px gap.
+        const cell = spans.find((span) => span.querySelector("svg") !== null);
+        // Unknown chrome — keep the shell's own glyph rather than guess.
+        if (cell === undefined) continue;
+        const gear = cell.querySelector("svg");
         if (gear !== null) gear.style.display = "none";
         const wrap = document.createElement("span");
         wrap.className = "dshAcv-navIcon";
         wrap.innerHTML = ARCHIVE_ICON_SVG;
-        button.insertBefore(wrap, spans[0]);
+        cell.insertBefore(wrap, cell.firstChild);
       }
     }
   };

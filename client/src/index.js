@@ -3,11 +3,14 @@
  *
  * 1. Mounts this plugin's Typert contribution so the `remote.archivedSessions`
  *    namespace service exists on the client.
- * 2. Registers dictionaries, the page stylesheet, and the settings nav icon
- *    swap (installed here, not in the page, so the icon is correct the
- *    moment the settings panel opens — regardless of the active section).
+ * 2. Registers dictionaries, the page stylesheet, the settings nav icon and
+ *    the legacy nav-icon fallback (all installed here, not in the page, so
+ *    the icon is correct the moment the settings panel opens — regardless of
+ *    the active section).
  * 3. Registers a `settings.section` entry ("已归档对话" / "Archived
- *    conversations") whose panel renders the management page.
+ *    conversations") whose panel renders the management page, plus the
+ *    matching `settings.section.icon` entry that gives that row its glyph on
+ *    cores whose shell owns navigation icons (≥ 0.2.2-rc.1).
  *
  * The `workspaces` service is declared as a dependency: the page controller
  * subscribes to its live archive-set snapshot, so conversations archived
@@ -21,10 +24,20 @@ import { ArchivedConversationsController } from "./controller.js";
 import { ArchivedConversationsPage } from "./page.js";
 import { installStyles } from "./styles.js";
 import { installNavIcon } from "./nav-icon.js";
+import { ArchivedSectionIcon } from "./section-icon.js";
 import { en, zh } from "./locale.js";
 
 export const NS = "archived-conversations";
 export const name = "archived-conversations-client";
+
+/**
+ * This plugin's settings-cell key. `settings.section` and
+ * `settings.section.icon` must use the SAME id: the shell renders icon
+ * entries only for the section whose id matches (`renderSlot(...,
+ * { only: row.id })`), so the two declarations share this constant instead of
+ * repeating a literal that could drift.
+ */
+const SECTION_ID = "archived-conversations";
 
 /** Required client services. */
 export const inject = ["remote", "slots", "locale", "workspaces"];
@@ -52,11 +65,22 @@ async function apply(ctx) {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "archived-conversations: dictionaries");
 
+  // The shell's nav icon, on cores that declare the slot (≥ 0.2.2-rc.1).
+  // `inject` waits for the declaration and never fires on cores without it,
+  // so this is a no-op there rather than an error.
+  ctx.slots.inject("settings.section.icon", () => ctx.slots.register({
+    name: "settings.section.icon",
+    id: SECTION_ID,
+    order: 30
+  }, ArchivedSectionIcon));
+
+  // The pre-slot fallback (≤ 0.2.0), which defers to the shell whenever the
+  // icon above actually rendered.
   const offNavIcon = installNavIcon(() => ctx.locale.bind(NS)("nav"));
 
   ctx.slots.inject("settings.section", () => ctx.slots.register({
     name: "settings.section",
-    id: "archived-conversations",
+    id: SECTION_ID,
     order: 30,
     label: () => ctx.locale.bind(NS)("nav"),
     locale: NS,

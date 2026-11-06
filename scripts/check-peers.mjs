@@ -48,7 +48,8 @@ export const SUPPORTED_CORE_VERSIONS = [
   "0.1.2-rc.1",
   "0.1.5-rc.2",
   "0.1.7-rc.2",
-  "0.2.0-rc.2"
+  "0.2.0-rc.2",
+  "0.2.2-rc.1"
 ];
 
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));

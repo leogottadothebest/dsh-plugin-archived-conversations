@@ -117,15 +117,16 @@ function primitivesSeed(era) {
  * The primitives eras the artifact must render against, oldest first. The
  * last entry is the line this build targets — `assertSeedMatchesPackage`
  * below cross-checks its seed against the installed package, so it must
- * mirror that package's surface. 0.1.7-rc.2 and 0.2.0-rc.2 share one naming
- * era; they are listed separately so a future divergence, or a failure in the
- * render walk, names the line it belongs to instead of blaming "the newest
- * ones".
+ * mirror that package's surface. 0.1.7-rc.2, 0.2.0-rc.2 and 0.2.2-rc.1 share
+ * one naming era; they are listed separately so a future divergence, or a
+ * failure in the render walk, names the line it belongs to instead of blaming
+ * "the newest ones".
  */
 const ERAS = [
   { name: "0.1.5 (size-suffixed icons)", seed: primitivesSeed("size-suffixed") },
   { name: "0.1.7-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") },
-  { name: "0.2.0-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") }
+  { name: "0.2.0-rc.2 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") },
+  { name: "0.2.2-rc.1 (stroke-weight icons)", seed: primitivesSeed("stroke-weight") }
 ];
 
 /**
@@ -296,7 +297,8 @@ function mockContext(state) {
         return () => {};
       },
       register: (options, component) => {
-        state.section = { options, component };
+        state.slots ??= {};
+        state.slots[options.name] = { options, component };
         return () => {};
       }
     },
@@ -308,15 +310,48 @@ function mockContext(state) {
   };
 }
 
+/** Walk one render tree looking for a marker attribute. */
+function findMarked(node, attribute) {
+  if (node === null || node === undefined || typeof node !== "object") return undefined;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = findMarked(child, attribute);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
+  }
+  if (node.__dshElement !== true) return undefined;
+  if (node.props !== null && typeof node.props === "object" && Object.hasOwn(node.props, attribute)) return node;
+  return findMarked(node.props?.children, attribute);
+}
+
 for (const era of ERAS) {
   const { state, dispose, styleTags } = await activate(era.seed);
   const at = (what) => `${era.name}: ${what}`;
-  if (state.section === undefined) throw new Error(at("apply registered no settings.section entry"));
-  if (state.section.options.id !== "archived-conversations") throw new Error(at(`settings.section id ${JSON.stringify(state.section.options.id)} changed; the settings shell keys its nav icon on the id`));
+  const section = state.slots?.["settings.section"];
+  if (section === undefined) throw new Error(at("apply registered no settings.section entry"));
+  if (section.options.id !== "archived-conversations") throw new Error(at(`settings.section id ${JSON.stringify(section.options.id)} changed; the settings shell keys its nav icon on the id`));
+  // The icon slot is addressed by the SECTION id (`renderSlot(..., {only: row.id})`),
+  // so a drift between the two ids silently removes the nav icon on cores that
+  // support the slot.
+  const sectionIcon = state.slots?.["settings.section.icon"];
+  if (sectionIcon === undefined) throw new Error(at("apply registered no settings.section.icon entry (DSH core ≥ 0.2.2-rc.1 renders the nav glyph from this slot)"));
+  if (sectionIcon.options.id !== section.options.id) {
+    throw new Error(at(`settings.section.icon id ${JSON.stringify(sectionIcon.options.id)} must equal the settings.section id ${JSON.stringify(section.options.id)} — the shell only renders icon entries addressed by the matching section id`));
+  }
   assertCodecs(state.mounted?.descriptors);
   if (styleTags.length !== 1) throw new Error(at(`apply installed ${String(styleTags.length)} stylesheet tags; the module system's claimStyles contract expects exactly one`));
   if (styleTags[0].dataset?.plugin !== pkg.name || styleTags[0].dataset?.pluginCss !== `${pkg.name}/page.css`) {
     throw new Error(at(`stylesheet tag is missing the data-plugin/data-plugin-css contract: ${JSON.stringify(styleTags[0].dataset)}`));
+  }
+
+  // The nav glyph the shell will render. It must exist (a missing primitives
+  // export would make the element type undefined) and carry the marker the
+  // legacy DOM fallback uses to stand down.
+  const iconTree = sectionIcon.component({ size: 16, active: true });
+  assertRenderableType(iconTree, at("settings.section.icon"));
+  if (findMarked(iconTree, "data-dshacv-icon-slot") === undefined) {
+    throw new Error(at("settings.section.icon rendered no `data-dshacv-icon-slot` marker — nav-icon.js uses it to detect that the shell owns the glyph and must not run its legacy swap"));
   }
 
   for (const { name, snapshot } of SNAPSHOTS) {
@@ -330,7 +365,7 @@ for (const era of ERAS) {
       deleteSession: async () => true,
       deleteAll: async () => {}
     };
-    const tree = state.section.component({ page, t: (key) => key, readLocale: () => "zh" });
+    const tree = section.component({ page, t: (key) => key, readLocale: () => "zh" });
     assertRenderableType(tree, at(`settings.section[${name}]`));
   }
   if (typeof dispose === "function") await dispose();

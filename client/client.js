@@ -19793,6 +19793,17 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
   });
 }
 
+// client/src/section-icon.js
+var import_jsx_runtime2 = require("react/jsx-runtime");
+var ICON_SLOT_MARKER = "data-dshacv-icon-slot";
+function ArchivedSectionIcon({ size }) {
+  return (0, import_jsx_runtime2.jsx)("span", {
+    "data-dshacv-icon-slot": "",
+    style: { display: "inline-flex", alignItems: "center", justifyContent: "center" },
+    children: (0, import_jsx_runtime2.jsx)(IconArchiveOutline, { size: size ?? 16 })
+  });
+}
+
 // client/src/nav-icon.js
 var ARCHIVE_ICON_SVG = [
   '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">',
@@ -19807,16 +19818,19 @@ function installNavIcon(readLabel) {
     if (disposed) return;
     const label = readLabel();
     for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      if (dialog.querySelector(`[${ICON_SLOT_MARKER}]`) !== null) continue;
       for (const button of dialog.querySelectorAll("nav button")) {
         const spans = [...button.children].filter((child) => child.tagName === "SPAN");
         if (!spans.some((span) => span.textContent === label)) continue;
         if (button.querySelector(".dshAcv-navIcon") !== null) continue;
-        const gear = button.querySelector("svg");
+        const cell = spans.find((span) => span.querySelector("svg") !== null);
+        if (cell === void 0) continue;
+        const gear = cell.querySelector("svg");
         if (gear !== null) gear.style.display = "none";
         const wrap = document.createElement("span");
         wrap.className = "dshAcv-navIcon";
         wrap.innerHTML = ARCHIVE_ICON_SVG;
-        button.insertBefore(wrap, spans[0]);
+        cell.insertBefore(wrap, cell.firstChild);
       }
     }
   };
@@ -19922,6 +19936,7 @@ var en = {
 // client/src/index.js
 var NS = "archived-conversations";
 var name = "archived-conversations-client";
+var SECTION_ID = "archived-conversations";
 var inject = ["remote", "slots", "locale", "workspaces"];
 installStyles();
 async function apply(ctx) {
@@ -19929,10 +19944,15 @@ async function apply(ctx) {
   const page = new ArchivedConversationsController(ctx);
   installStyles();
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "archived-conversations: dictionaries");
+  ctx.slots.inject("settings.section.icon", () => ctx.slots.register({
+    name: "settings.section.icon",
+    id: SECTION_ID,
+    order: 30
+  }, ArchivedSectionIcon));
   const offNavIcon = installNavIcon(() => ctx.locale.bind(NS)("nav"));
   ctx.slots.inject("settings.section", () => ctx.slots.register({
     name: "settings.section",
-    id: "archived-conversations",
+    id: SECTION_ID,
     order: 30,
     label: () => ctx.locale.bind(NS)("nav"),
     locale: NS,

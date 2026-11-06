@@ -13,8 +13,8 @@ importers:
         version: 4.5.4
     devDependencies:
       '@deepseek-ai/dsh-client-ui-primitives':
-        specifier: ^0.2.0-rc.2
-        version: 0.2.0-rc.2
+        specifier: ^0.2.2-rc.1
+        version: 0.2.2-rc.1
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -27,10 +27,10 @@ importers:
 
 packages:
 
-  '@deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.2':
-    resolution: {integrity: sha512-Zx/MRT8NH6rYEvPnk4FQaHrADM6Dh1PQCprieqdvKj6yFhD/CJUVjSN08suGF6FPQekfVTJtS0WxY1XbQ5Ed9Q==}
+  '@deepseek-ai/dsh-client-ui-primitives@0.2.2-rc.1':
+    resolution: {integrity: sha512-6ZUYgZ6XYmh/twuwGzKPA4XH3RSODl4b1W4p1pqoFJ7xLn1EroEmA+E/sqa5Z2+JvFWxfPttsHTHkOyH8uK8Tg==}
     peerDependencies:
-      '@deepseek-ai/cordis': ~4.0.4
+      '@deepseek-ai/cordis': ~4.1.0
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -214,7 +214,7 @@ packages:
 
 snapshots:
 
-  '@deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.2': {}
+  '@deepseek-ai/dsh-client-ui-primitives@0.2.2-rc.1': {}
 
   '@esbuild/aix-ppc64@0.28.2':
     optional: true

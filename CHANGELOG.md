@@ -5,6 +5,48 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.9] - 2026-11-06
+
+### 修复
+
+- **设置导航里「已归档对话」的文字比其它设置项向右错位**（截图症状：同一列
+  设置项里只有这一行标签被推右 ~20px）。根因是导航图标换了实现方式：
+  旧代码为第三方的 section 把齿轮换成归档字形时，是往导航按钮里
+  `insertBefore` 一个**新的 flex 子元素**，于是多出一份 16px 宽图标 **和**
+  一个 8px 的 flex gap，标签左边界从 36px 变成 44px 甚至更多。现在图标
+  改由外壳自己的图标单元承载（见下），行的 flex 几何与第一方各行完全一致。
+- 旧线（≤ 0.2.0）的 DOM 回退同步修正：字形插进外壳**已有的图标单元内部**
+  （隐藏齿轮后该单元仍是 16px），不再新增 flex 子元素；定位图标单元改为
+  「含 `svg` 的那个 span」，外壳结构不认识时宁可保留原生齿轮也不乱猜。
+
+### 变更
+
+- **改用原生导航图标槽位**：DSH core ≥ 0.2.2-rc.1 的设置外壳声明了
+  `settings.section.icon` list 槽，按 **section id** 寻址（外壳渲染
+  `renderSlot(..., { only: row.id })`）。新增 `client/src/section-icon.js`
+  注册该条目，`id` 与 `settings.section` 共用 `SECTION_ID` 常量；构建冒烟
+  测试断言两者相等，并断言图标带 `data-dshacv-icon-slot` 标记。槽位存在时
+  `nav-icon.js` 检测到标记后**整套 DOM 交换直接让位**，新线上完全不碰 DOM。
+- 适配 DSH core 0.2.2-rc.1：peer 范围 `^0.2.0-rc.2` 已覆盖 0.2.2-rc.1，
+  无需放宽；支持矩阵 `scripts/check-peers.mjs` 加入 `0.2.2-rc.1`，构建冒烟
+  测试加第 4 代 primitives 种子，devDependency
+  `@deepseek-ai/dsh-client-ui-primitives` 升到 `^0.2.2-rc.1`。
+- 0.2.2-rc.1 的核心契约逐项核对无破坏性变化：`dsh-session` /
+  `dsh-typert-protocol` / `dsh-storage-domain` / `dsh-workspace` /
+  `dsh-session-projection-cache` 的相关面不变；`dsh-client-ui-primitives`
+  由 282 增至 310 个导出，本插件用到的 `Button` / `Menu` / `RiskConfirmation`
+  / `relativeTime` / 四个图标全部仍在（`Menu` 只是新增 `current` /
+  `disabledReason` 等可选属性）；`dsh-client-modules` 的
+  `window.__ModuleLoader__` 契约不变。宿主 `./typert` 清单与客户端
+  contribution 均被 0.2.2-rc.1 自己的 `TypertRegistry` 接受，profile loader
+  的 `skippedBundles` 为空。
+- 注：0.2.2-rc.1 把 `@deepseek-ai/dsh-client-ui-primitives` 从宿主
+  `node_modules` 移除了（它本来就只是浏览器侧平台种子模块，由
+  `dsh.client.inject` 在客户端组合时解析），因此该包只作为**构建期**
+  devDependency 存在，运行不依赖宿主安装。
+- `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 版本并集补上
+  `0.2.2-rc.1`（仍是单条规则 + `||` 形式）。
+
 ## [0.1.8] - 2026-09-30
 
 ### 修复
