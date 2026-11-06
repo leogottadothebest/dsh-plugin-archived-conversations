@@ -334,11 +334,16 @@ list 槽（`dsh-client-ui-settings-general`），并**按 section id 寻址**：
 ### 4.5 空会话与「只看真实对话」筛选
 
 **症状**：已归档页里出现大量「未命名对话」。实测这批行的来源是**空会话**
-（创建后从未发送任何消息，`seq === 0`），不是标题丢失：
+（创建后从未开始过回合），不是标题丢失：
 
 - 会话投影缓存共 96 条记录，`blank = true` 恰好 10 条，**这 10 条全部
-  没有 title、也没有 lastPromptAt**；反向也成立——没有任何「有内容却没
-  标题」的会话。10 条里 6 条当时在归档集合中，其余 4 条是尚未归档的占位。
+  没有 title、也没有 lastPromptAt**；反向也成立——没有任何「有内容却被
+  标记为空」的会话。10 条里 6 条当时在归档集合中，其余 4 条是尚未归档的
+  占位。
+- ⚠️ 但「未命名」**不等于**「投影缓存里没有标题」：还有一类行**读取不到
+  投影**，从而既没有标题、也没有 `blank`。第一批筛选上线后仍有 3 条
+  空会话漏网、2 条显示「未命名对话」，根因就在于此——见文末「旧格式
+  日志的陷阱」。
 
 **它们怎么来的**（核心机制）：
 
@@ -360,9 +365,9 @@ list 槽（`dsh-client-ui-settings-general`），并**按 section id 寻址**：
 **实现**：
 
 - 宿主 `describe()` 新增 `blank` 字段，取值与 core 会话列表**同源**：
-  `values.sessionListMetadata.blank ?? (live !== undefined ? live.seq === 0 : false)`
-  （seeded 分支不读投影，保持 `false`——fork 继承了事件）。用 `blank`
-  而不是「标题为空」判别，因为真实对话也可能暂时没有标题。
+  `values.sessionListMetadata.blank ?? (live ? live.seq === 0 : 日志兜底)`
+  （seeded 分支保持 `false`——fork 继承了事件，且 fork 本身以非空为前提）。
+  用 `blank` 而不是「标题为空」判别，因为真实对话也可能暂时没有标题。
 - 客户端把这当作**视图状态**（`controller.showBlank`，默认 `false`）：
   列表、分组、空态都跟着筛选走，而 `snapshot.items` 保持完整——
   批量操作与确认框的计数因此覆盖**全部**已归档项，确认文案会写明其中
@@ -372,6 +377,33 @@ list 槽（`dsh-client-ui-settings-general`），并**按 section id 寻址**：
 - 构建冒烟测试把筛选结果钉在页面根节点的 `data-dshacv-shown` /
   `data-dshacv-hidden-blank` 上（7 个渲染场景 × 4 代 primitives）：
   默认筛选下混排数据只能看到真实对话。
+
+#### 旧格式日志的陷阱（0.2.1）
+
+投影缓存把记录绑定在 `formatVersion` 上（`currentLifecycleMatches`），
+而**旧格式记录的 `sessionListMetadata` 不会被任何兜底面暴露**——
+`cachedPredecessorTitle` 只服务 title 一行。于是：
+
+- 物理日志还停在 v3、且迁移后从未被打开过的会话，`cachedSnapshot` 必然
+  未命中（header 早已被翻译成当前格式），`cachedPredecessorTitle` 也只能
+  给出（可能不存在的）标题；
+- 这类行因此 **title = null 且 blank = false**：既显示「未命名对话」，
+  又因为 `blank` 为假而逃过筛选。
+
+实测归档集合里的 13 条：6 条空会话中，v4 的 3 条被正确识别，
+**v3 的 3 条全部漏网**（截图里 Academic 分组那两行就是）。
+
+**兜底**：`_logFacts()` 直接读一次存档日志，用与 core 投影完全相同的判据
+（`applySessionListMetadata`：`blank` 初值 true，只有 `turn/start` 会翻转）
+得出 `blank`；同时把最后一条 `session/title` 事件的标题作为标题兜底
+（与 title 投影折叠的是同一来源），避免真实旧会话仅仅因为缓存过期就永远
+显示「未命名」。
+
+- 只对 `live === undefined && !isSeeded && 投影里没有 sessionListMetadata`
+  的行触发，且按 session id 记忆化——旧日志每个插件生命周期只读一次；
+- 读失败不记忆化（可能是瞬时的），并返回 `blank: false`：宁可显示成
+  未命名，也不能因为读不到日志就把真实对话藏起来；
+- 删除会话时同步丢弃该缓存项。
 
 ## 5. 包结构与安装
 

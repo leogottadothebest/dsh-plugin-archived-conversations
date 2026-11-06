@@ -5,6 +5,30 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] - 2026-11-06
+
+### 修复
+
+- **旧格式会话漏出「只看真实对话」筛选**（实测症状：筛选已开启并显示
+  「已隐藏 3 个空会话」，但页面上仍有 2 行「未命名对话」）。根因是投影
+  缓存按 `formatVersion` 绑定记录（`currentLifecycleMatches`），而旧格式
+  记录的 `sessionListMetadata` 不会被任何兜底面暴露
+  （`cachedPredecessorTitle` 只服务 title 一行）。于是物理日志还停在 v3、
+  迁移后从未被打开过的会话必然 `cachedSnapshot` 未命中——这类行
+  **title = null 且 blank = false**：既显示「未命名对话」，又逃过筛选。
+  实测归档集合 13 条中 6 条空会话，v4 的 3 条识别正确，**v3 的 3 条全部
+  漏网**。
+  - 新增 `_logFacts()`：只对「live 为空 + 非 seeded + 投影里没有
+    `sessionListMetadata`」的行，读一次存档日志，用与 core 投影完全相同的
+    判据（`applySessionListMetadata`：`blank` 初值 true，只有 `turn/start`
+    会翻转）得出 `blank`；同时用最后一条 `session/title` 事件的标题做标题
+    兜底（与 title 投影折叠同源），避免真实旧会话因为缓存过期而永远显示
+    「未命名」。
+  - 按 session id 记忆化，旧日志每个插件生命周期只读一次；读失败不记忆化
+    （可能瞬时），且返回 `blank: false`——宁可显示成未命名，也不能因为
+    读不到日志就藏起真实对话。删除会话时同步丢弃缓存项。
+- 这是纯宿主改动，客户端产物不变。
+
 ## [0.2.0] - 2026-11-06
 
 ### 新增
