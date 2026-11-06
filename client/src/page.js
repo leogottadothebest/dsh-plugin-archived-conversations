@@ -18,7 +18,8 @@ import { jsx, jsxs } from "react/jsx-runtime";
 import {
   Button,
   Menu,
-  RiskConfirmation
+  RiskConfirmation,
+  Switch
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import {
   IconArchiveOutline,
@@ -75,12 +76,16 @@ function projectTitle(path, projects, t) {
 
 /** One conversation row: identity, archive time, unarchive/delete actions. */
 function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
-  const title = item.title ?? t("untitled");
-  const when = formatArchiveTime(item.archivedAt, lang);
+  // `blank` rows are the never-prompted placeholders: they carry no title by
+  // definition and no activity time worth showing, so they say what they are
+  // instead of falling back to "untitled".
+  const title = item.title ?? (item.blank ? t("blankTitle") : t("untitled"));
+  const when = item.blank ? t("blankHint") : (formatArchiveTime(item.archivedAt, lang) ?? t("timeUnknown"));
   const busy = pending;
 
   return jsx("li", {
-    className: "dshAcv-row",
+    className: item.blank ? "dshAcv-row dshAcv-rowBlank" : "dshAcv-row",
+    "data-dshacv-blank": item.blank ? "true" : undefined,
     children: [
       jsxs("div", {
         className: "dshAcv-rowMain",
@@ -89,7 +94,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
           jsxs("div", {
             className: "dshAcv-rowMeta",
             children: [
-              jsx("span", { children: when ?? t("timeUnknown") }),
+              jsx("span", { children: when }),
               item.readError !== null && jsx("span", {
                 className: "dshAcv-rowError",
                 children: t("readErrorLabel").replace("{error}", item.readError)
@@ -232,7 +237,15 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
   }, [snapshot.message, page]);
 
   const busyCount = snapshot.pending.size;
-  const groups = groupItems(snapshot.items);
+  // The filter is a VIEW concern: `snapshot.items` stays complete so the
+  // bulk actions and their confirmation counts keep covering everything
+  // archived, while the list, the groups and the empty state follow the
+  // toggle. Blank rows are the never-prompted placeholders.
+  const visibleItems = snapshot.showBlank ? snapshot.items : snapshot.items.filter((item) => !item.blank);
+  const hiddenBlank = snapshot.items.length - visibleItems.length;
+  const groups = groupItems(visibleItems);
+  /** Everything archived under one project path, filter or not. */
+  const itemsUnder = (path) => snapshot.items.filter((item) => (item.cwd ?? "") === path);
 
   const onConfirmSingleDelete = async () => {
     if (confirmItem === null) return;
@@ -251,17 +264,39 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
   };
 
   const openBulkConfirm = (group) => {
+    // Count what the host sweep will actually reach (including rows the
+    // filter hides), so the confirmation never understates the deletion.
+    const inScope = itemsUnder(group.path);
     setConfirmAll({
       cwd: group.path === "" ? undefined : group.path,
       title: projectTitle(group.path, snapshot.projects, t),
-      count: group.items.length
+      count: inScope.length,
+      blankCount: inScope.filter((item) => item.blank).length
     });
     setAcknowledged(false);
   };
 
+  // The bulk sweep is host-side and scope-based (`cwd` only), so it reaches
+  // every archived row in scope — including the empty ones this view hides.
+  // The confirmation says so instead of quoting the visible count.
+  const bulkDescription = (() => {
+    if (confirmAll === null) return "";
+    const blanks = confirmAll.blankCount ?? 0;
+    const key = `${confirmAll.cwd !== undefined ? "confirmProjectDescription" : "confirmAllDescription"}${blanks > 0 ? "Blank" : ""}`;
+    return t(key)
+      .replace("{n}", String(confirmAll.count))
+      .replace("{b}", String(blanks))
+      .replace("{title}", confirmAll.title);
+  })();
+
   return jsxs("div", {
     className: "dshAcv",
     "data-dshb-scan": true,
+    // The render walk in `scripts/build-client.mjs` cannot descend into child
+    // components, so the filter's outcome is asserted here, on the page root:
+    // how many rows are visible, and how many the filter held back.
+    "data-dshacv-shown": String(visibleItems.length),
+    "data-dshacv-hidden-blank": String(hiddenBlank),
     children: [
       jsxs("header", {
         className: "dshAcv-header",
@@ -290,12 +325,34 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
                 className: "dshAcv-dangerButton",
                 icon: jsx(IconTrashOutline, {}),
                 onClick: () => {
-                  setConfirmAll({ cwd: undefined, title: t("heading"), count: snapshot.items.length });
+                  setConfirmAll({
+                    cwd: undefined,
+                    title: t("heading"),
+                    count: snapshot.items.length,
+                    blankCount: snapshot.items.filter((item) => item.blank).length
+                  });
                   setAcknowledged(false);
                 },
                 children: t("deleteAll")
               })
             ]
+          })
+        ]
+      }),
+
+      snapshot.phase === "ready" && jsxs("div", {
+        className: "dshAcv-filterBar",
+        children: [
+          jsx(Switch, {
+            checked: !snapshot.showBlank,
+            onChange: (next) => page.setShowBlank(!next),
+            label: t("onlyReal"),
+            title: t("onlyRealHint")
+          }),
+          jsx("span", { className: "dshAcv-filterLabel", children: t("onlyReal") }),
+          hiddenBlank > 0 && jsx("span", {
+            className: "dshAcv-filterCount",
+            children: t("hiddenBlank").replace("{n}", String(hiddenBlank))
           })
         ]
       }),
@@ -328,7 +385,14 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
         className: "dshAcv-state",
         children: [
           jsx(IconArchiveOutline, { size: 28, className: "dshAcv-stateIcon" }),
-          jsx("p", { className: "dshAcv-stateText", children: t("empty") })
+          jsx("p", {
+            className: "dshAcv-stateText",
+            // An empty VIEW because the filter hid everything is not the same
+            // as an empty archive, and the message must not lie about it.
+            children: hiddenBlank > 0
+              ? t("emptyFiltered").replace("{n}", String(hiddenBlank))
+              : t("empty")
+          })
         ]
       }),
 
@@ -371,9 +435,7 @@ export function ArchivedConversationsPage({ page, t, readLocale }) {
       jsx(RiskConfirmation, {
         open: confirmAll !== null,
         title: t("confirmAllTitle"),
-        description: confirmAll !== null && confirmAll.cwd !== undefined
-          ? t("confirmProjectDescription").replace("{title}", confirmAll.title).replace("{n}", String(confirmAll.count))
-          : t("confirmAllDescription").replace("{n}", String(snapshot.items.length)),
+        description: bulkDescription,
         acknowledgeLabel: t("acknowledge"),
         cancelLabel: t("cancel"),
         closeLabel: t("cancel"),

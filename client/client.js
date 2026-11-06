@@ -18913,6 +18913,7 @@ var archivedSessionIds = external_exports.array(sessionId);
 var archivedSessionItem = external_exports.object({
   sessionId,
   title: external_exports.string().nullable(),
+  blank: external_exports.boolean(),
   cwd: external_exports.string().nullable(),
   createdAt: external_exports.number().nullable(),
   updatedAt: external_exports.number().nullable(),
@@ -18995,7 +18996,12 @@ var IDLE = {
   archivedSessionIds: [],
   projects: {},
   message: null,
-  pending: /* @__PURE__ */ new Set()
+  pending: /* @__PURE__ */ new Set(),
+  // View state, not data: whether the empty (never-prompted) conversations
+  // are shown. Default off — archived placeholders are noise by default —
+  // and owned here rather than in the page so the choice survives switching
+  // settings sections within one session.
+  showBlank: false
 };
 function archivedRemote(ctx) {
   const remote = ctx.get("remote.archivedSessions");
@@ -19170,6 +19176,14 @@ var ArchivedConversationsController = class {
     if (this.#snapshot.message === null) return;
     this.#emit({ message: null });
   }
+  /**
+   * Show or hide the empty (never-prompted) conversations.
+   * @param showBlank - true to list them alongside real conversations.
+   */
+  setShowBlank(showBlank) {
+    if (this.#snapshot.showBlank === showBlank) return;
+    this.#emit({ showBlank });
+  }
   dispose() {
     this.#disposed = true;
     this.#watchOff?.();
@@ -19255,6 +19269,37 @@ var css = `
   align-items: center;
   gap: 8px;
   flex: none;
+}
+
+/* View filter: keep real conversations, hide archived empty placeholders. */
+.dshAcv-filterBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshAcv-filterLabel {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dshAcv-filterCount {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Empty (never-prompted) placeholder, shown only when the filter is off. */
+.dshAcv-rowBlank {
+  border-style: dashed;
+  background: transparent;
+}
+
+.dshAcv-rowBlank .dshAcv-rowTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-style: italic;
 }
 
 .dshAcv-toolbar .dshAcv-dangerButton,
@@ -19512,11 +19557,12 @@ function projectTitle(path, projects, t) {
   return segments.length > 0 ? segments[segments.length - 1] : path;
 }
 function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
-  const title = item.title ?? t("untitled");
-  const when = formatArchiveTime(item.archivedAt, lang);
+  const title = item.title ?? (item.blank ? t("blankTitle") : t("untitled"));
+  const when = item.blank ? t("blankHint") : formatArchiveTime(item.archivedAt, lang) ?? t("timeUnknown");
   const busy = pending;
   return (0, import_jsx_runtime.jsx)("li", {
-    className: "dshAcv-row",
+    className: item.blank ? "dshAcv-row dshAcv-rowBlank" : "dshAcv-row",
+    "data-dshacv-blank": item.blank ? "true" : void 0,
     children: [
       (0, import_jsx_runtime.jsxs)("div", {
         className: "dshAcv-rowMain",
@@ -19525,7 +19571,7 @@ function ArchivedRow({ item, t, lang, pending, onUnarchive, onDelete }) {
           (0, import_jsx_runtime.jsxs)("div", {
             className: "dshAcv-rowMeta",
             children: [
-              (0, import_jsx_runtime.jsx)("span", { children: when ?? t("timeUnknown") }),
+              (0, import_jsx_runtime.jsx)("span", { children: when }),
               item.readError !== null && (0, import_jsx_runtime.jsx)("span", {
                 className: "dshAcv-rowError",
                 children: t("readErrorLabel").replace("{error}", item.readError)
@@ -19650,7 +19696,10 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
     return () => clearTimeout(timer);
   }, [snapshot.message, page]);
   const busyCount = snapshot.pending.size;
-  const groups = groupItems(snapshot.items);
+  const visibleItems = snapshot.showBlank ? snapshot.items : snapshot.items.filter((item) => !item.blank);
+  const hiddenBlank = snapshot.items.length - visibleItems.length;
+  const groups = groupItems(visibleItems);
+  const itemsUnder = (path) => snapshot.items.filter((item) => (item.cwd ?? "") === path);
   const onConfirmSingleDelete = async () => {
     if (confirmItem === null) return;
     const sessionId2 = confirmItem.sessionId;
@@ -19666,16 +19715,29 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
     await page.deleteAll(cwd);
   };
   const openBulkConfirm = (group) => {
+    const inScope = itemsUnder(group.path);
     setConfirmAll({
       cwd: group.path === "" ? void 0 : group.path,
       title: projectTitle(group.path, snapshot.projects, t),
-      count: group.items.length
+      count: inScope.length,
+      blankCount: inScope.filter((item) => item.blank).length
     });
     setAcknowledged(false);
   };
+  const bulkDescription = (() => {
+    if (confirmAll === null) return "";
+    const blanks = confirmAll.blankCount ?? 0;
+    const key = `${confirmAll.cwd !== void 0 ? "confirmProjectDescription" : "confirmAllDescription"}${blanks > 0 ? "Blank" : ""}`;
+    return t(key).replace("{n}", String(confirmAll.count)).replace("{b}", String(blanks)).replace("{title}", confirmAll.title);
+  })();
   return (0, import_jsx_runtime.jsxs)("div", {
     className: "dshAcv",
     "data-dshb-scan": true,
+    // The render walk in `scripts/build-client.mjs` cannot descend into child
+    // components, so the filter's outcome is asserted here, on the page root:
+    // how many rows are visible, and how many the filter held back.
+    "data-dshacv-shown": String(visibleItems.length),
+    "data-dshacv-hidden-blank": String(hiddenBlank),
     children: [
       (0, import_jsx_runtime.jsxs)("header", {
         className: "dshAcv-header",
@@ -19704,12 +19766,33 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
                 className: "dshAcv-dangerButton",
                 icon: (0, import_jsx_runtime.jsx)(IconTrashOutline, {}),
                 onClick: () => {
-                  setConfirmAll({ cwd: void 0, title: t("heading"), count: snapshot.items.length });
+                  setConfirmAll({
+                    cwd: void 0,
+                    title: t("heading"),
+                    count: snapshot.items.length,
+                    blankCount: snapshot.items.filter((item) => item.blank).length
+                  });
                   setAcknowledged(false);
                 },
                 children: t("deleteAll")
               })
             ]
+          })
+        ]
+      }),
+      snapshot.phase === "ready" && (0, import_jsx_runtime.jsxs)("div", {
+        className: "dshAcv-filterBar",
+        children: [
+          (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Switch, {
+            checked: !snapshot.showBlank,
+            onChange: (next) => page.setShowBlank(!next),
+            label: t("onlyReal"),
+            title: t("onlyRealHint")
+          }),
+          (0, import_jsx_runtime.jsx)("span", { className: "dshAcv-filterLabel", children: t("onlyReal") }),
+          hiddenBlank > 0 && (0, import_jsx_runtime.jsx)("span", {
+            className: "dshAcv-filterCount",
+            children: t("hiddenBlank").replace("{n}", String(hiddenBlank))
           })
         ]
       }),
@@ -19735,7 +19818,12 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
         className: "dshAcv-state",
         children: [
           (0, import_jsx_runtime.jsx)(IconArchiveOutline, { size: 28, className: "dshAcv-stateIcon" }),
-          (0, import_jsx_runtime.jsx)("p", { className: "dshAcv-stateText", children: t("empty") })
+          (0, import_jsx_runtime.jsx)("p", {
+            className: "dshAcv-stateText",
+            // An empty VIEW because the filter hid everything is not the same
+            // as an empty archive, and the message must not lie about it.
+            children: hiddenBlank > 0 ? t("emptyFiltered").replace("{n}", String(hiddenBlank)) : t("empty")
+          })
         ]
       }),
       snapshot.phase === "ready" && groups.length > 0 && (0, import_jsx_runtime.jsx)("div", {
@@ -19775,7 +19863,7 @@ function ArchivedConversationsPage({ page, t, readLocale }) {
       (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.RiskConfirmation, {
         open: confirmAll !== null,
         title: t("confirmAllTitle"),
-        description: confirmAll !== null && confirmAll.cwd !== void 0 ? t("confirmProjectDescription").replace("{title}", confirmAll.title).replace("{n}", String(confirmAll.count)) : t("confirmAllDescription").replace("{n}", String(snapshot.items.length)),
+        description: bulkDescription,
         acknowledgeLabel: t("acknowledge"),
         cancelLabel: t("cancel"),
         closeLabel: t("cancel"),
@@ -19860,6 +19948,12 @@ var zh = {
   description: "\u5F52\u6863\u7684\u5BF9\u8BDD\u4E0D\u4F1A\u51FA\u73B0\u5728\u4FA7\u8FB9\u680F\u4E2D\u3002\u4F60\u53EF\u4EE5\u5728\u8FD9\u91CC\u53D6\u6D88\u5F52\u6863\uFF08\u6062\u590D\u663E\u793A\uFF09\uFF0C\u6216\u6C38\u4E45\u5220\u9664\u3002",
   countLabel: "\u5171 {n} \u4E2A\u5DF2\u5F52\u6863\u5BF9\u8BDD",
   untitled: "\u672A\u547D\u540D\u5BF9\u8BDD",
+  blankTitle: "\u7A7A\u4F1A\u8BDD",
+  blankHint: "\u521B\u5EFA\u540E\u4ECE\u672A\u53D1\u9001\u6D88\u606F",
+  onlyReal: "\u53EA\u770B\u771F\u5B9E\u5BF9\u8BDD",
+  onlyRealHint: "\u9690\u85CF\u521B\u5EFA\u540E\u4ECE\u672A\u53D1\u9001\u6D88\u606F\u7684\u7A7A\u4F1A\u8BDD\uFF08\u9ED8\u8BA4\u5F00\u542F\uFF09",
+  hiddenBlank: "\u5DF2\u9690\u85CF {n} \u4E2A\u7A7A\u4F1A\u8BDD",
+  emptyFiltered: "\u6CA1\u6709\u771F\u5B9E\u5BF9\u8BDD\uFF1B{n} \u4E2A\u7A7A\u4F1A\u8BDD\u5DF2\u88AB\u7B5B\u9009\u9690\u85CF\uFF0C\u5173\u95ED\u7B5B\u9009\u5373\u53EF\u67E5\u770B",
   noWorkspace: "\u672A\u5173\u8054\u5DE5\u4F5C\u533A",
   lastActivity: "\u6700\u8FD1\u6D3B\u52A8",
   "time.now": "\u521A\u521A",
@@ -19885,7 +19979,9 @@ var zh = {
   confirmDelete: "\u786E\u8BA4\u5220\u9664",
   confirmAllTitle: "\u6C38\u4E45\u5220\u9664\u5168\u90E8\u5BF9\u8BDD",
   confirmAllDescription: "\u5373\u5C06\u6C38\u4E45\u5220\u9664\u5168\u90E8 {n} \u4E2A\u5DF2\u5F52\u6863\u5BF9\u8BDD\u3002\u5B83\u4EEC\u7684\u6D88\u606F\u8BB0\u5F55\u4E0E\u65E5\u5FD7\u6587\u4EF6\u90FD\u4F1A\u88AB\u79FB\u9664\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002",
+  confirmAllDescriptionBlank: "\u5373\u5C06\u6C38\u4E45\u5220\u9664\u5168\u90E8 {n} \u4E2A\u5DF2\u5F52\u6863\u5BF9\u8BDD\uFF0C\u5176\u4E2D {b} \u4E2A\u4E3A\u7A7A\u4F1A\u8BDD\u3002\u5B83\u4EEC\u7684\u6D88\u606F\u8BB0\u5F55\u4E0E\u65E5\u5FD7\u6587\u4EF6\u90FD\u4F1A\u88AB\u79FB\u9664\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002",
   confirmProjectDescription: "\u5373\u5C06\u6C38\u4E45\u5220\u9664\u300C{title}\u300D\u4E2D\u7684 {n} \u4E2A\u5DF2\u5F52\u6863\u5BF9\u8BDD\u3002\u5B83\u4EEC\u7684\u6D88\u606F\u8BB0\u5F55\u4E0E\u65E5\u5FD7\u6587\u4EF6\u90FD\u4F1A\u88AB\u79FB\u9664\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002",
+  confirmProjectDescriptionBlank: "\u5373\u5C06\u6C38\u4E45\u5220\u9664\u300C{title}\u300D\u4E2D\u7684 {n} \u4E2A\u5DF2\u5F52\u6863\u5BF9\u8BDD\uFF0C\u5176\u4E2D {b} \u4E2A\u4E3A\u7A7A\u4F1A\u8BDD\u3002\u5B83\u4EEC\u7684\u6D88\u606F\u8BB0\u5F55\u4E0E\u65E5\u5FD7\u6587\u4EF6\u90FD\u4F1A\u88AB\u79FB\u9664\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002",
   confirmDeleteAll: "\u5168\u90E8\u6C38\u4E45\u5220\u9664",
   unarchived: "\u5DF2\u53D6\u6D88\u5F52\u6863\uFF0C\u5BF9\u8BDD\u5DF2\u6062\u590D\u5230\u4FA7\u8FB9\u680F",
   deleted: "\u5BF9\u8BDD\u5DF2\u6C38\u4E45\u5220\u9664",
@@ -19899,6 +19995,12 @@ var en = {
   description: "Archived conversations stay out of the sidebar. Restore them here, or delete them permanently.",
   countLabel: "{n} archived conversation(s)",
   untitled: "Untitled conversation",
+  blankTitle: "Empty conversation",
+  blankHint: "Never received a message",
+  onlyReal: "Real conversations only",
+  onlyRealHint: "Hide empty conversations that never received a message (on by default)",
+  hiddenBlank: "{n} empty conversation(s) hidden",
+  emptyFiltered: "No real conversations; {n} empty conversation(s) are hidden by the filter",
   noWorkspace: "No workspace",
   lastActivity: "Last activity",
   "time.now": "just now",
@@ -19924,7 +20026,9 @@ var en = {
   confirmDelete: "Delete permanently",
   confirmAllTitle: "Delete all conversations permanently",
   confirmAllDescription: "This permanently deletes all {n} archived conversations. Their messages and log files will be removed. This cannot be undone.",
+  confirmAllDescriptionBlank: "This permanently deletes all {n} archived conversations, {b} of them empty. Their messages and log files will be removed. This cannot be undone.",
   confirmProjectDescription: "This permanently deletes {n} archived conversation(s) in \u201C{title}\u201D. Their messages and log files will be removed. This cannot be undone.",
+  confirmProjectDescriptionBlank: "This permanently deletes {n} archived conversation(s) in \u201C{title}\u201D, {b} of them empty. Their messages and log files will be removed. This cannot be undone.",
   confirmDeleteAll: "Delete all permanently",
   unarchived: "Conversation restored to the sidebar",
   deleted: "Conversation deleted permanently",

@@ -331,6 +331,48 @@ list 槽（`dsh-client-ui-settings-general`），并**按 section id 寻址**：
   重新拉取明细。为此客户端 `inject` 声明 `workspaces` 并确保
   `@deepseek-ai/dsh-api-workspace-controller` 参与客户端组合。
 
+### 4.5 空会话与「只看真实对话」筛选
+
+**症状**：已归档页里出现大量「未命名对话」。实测这批行的来源是**空会话**
+（创建后从未发送任何消息，`seq === 0`），不是标题丢失：
+
+- 会话投影缓存共 96 条记录，`blank = true` 恰好 10 条，**这 10 条全部
+  没有 title、也没有 lastPromptAt**；反向也成立——没有任何「有内容却没
+  标题」的会话。10 条里 6 条当时在归档集合中，其余 4 条是尚未归档的占位。
+
+**它们怎么来的**（核心机制）：
+
+1. `session.create` 的复用谓词是
+   `reusable: (id) => !archivedSessionIds.includes(id) && workspace.sessionIds.includes(id)`
+   —— 在同一工作区开新对话会**复用**那个未归档的空会话，正常情况下每个
+   工作区最多一个。
+2. 一旦这个空会话被归档，它就被踢出复用池；下次在该工作区开新对话会
+   **再建一个**空会话，而被归档的那个永远留在磁盘上（核心没有自动清理）。
+3. 侧边栏只在空会话是**当前会话**时才显示它（`sessionVisible`：
+   `blank && id !== current → 隐藏`），而这一行上的悬停归档按钮
+   （`ArchiveSessionRowButton`，只校验权限）与 `Cmd+Shift+A`
+   （`session.archive`）**都不校验 blank**（对比 `rename` / `fork` 都显式
+   阻断）——一次误点就把一个空对话归档了，而这之后它在侧边栏彻底消失。
+4. 归档集合的唯一遍历者是本插件的已归档页，于是这些孤儿只在这里以
+   「未命名对话」现身。归档时间也不可信：插件未运行期间进入归档集合的
+   条目会在启动时回填成会话自身的 `updatedAt/createdAt`。
+
+**实现**：
+
+- 宿主 `describe()` 新增 `blank` 字段，取值与 core 会话列表**同源**：
+  `values.sessionListMetadata.blank ?? (live !== undefined ? live.seq === 0 : false)`
+  （seeded 分支不读投影，保持 `false`——fork 继承了事件）。用 `blank`
+  而不是「标题为空」判别，因为真实对话也可能暂时没有标题。
+- 客户端把这当作**视图状态**（`controller.showBlank`，默认 `false`）：
+  列表、分组、空态都跟着筛选走，而 `snapshot.items` 保持完整——
+  批量操作与确认框的计数因此覆盖**全部**已归档项，确认文案会写明其中
+  包含多少个空会话（避免「悄悄删掉看不见的行」）。
+- 空行单独标注（「空会话 · 创建后从未发送消息」，虚线边框 + 斜体），
+  筛选全隐藏时空态文案会说明是被筛选隐藏，而不是「没有已归档对话」。
+- 构建冒烟测试把筛选结果钉在页面根节点的 `data-dshacv-shown` /
+  `data-dshacv-hidden-blank` 上（7 个渲染场景 × 4 代 primitives）：
+  默认筛选下混排数据只能看到真实对话。
+
 ## 5. 包结构与安装
 
 ```

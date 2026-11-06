@@ -89,6 +89,37 @@ const css = `
   flex: none;
 }
 
+/* View filter: keep real conversations, hide archived empty placeholders. */
+.dshAcv-filterBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshAcv-filterLabel {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dshAcv-filterCount {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Empty (never-prompted) placeholder, shown only when the filter is off. */
+.dshAcv-rowBlank {
+  border-style: dashed;
+  background: transparent;
+}
+
+.dshAcv-rowBlank .dshAcv-rowTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-style: italic;
+}
+
 .dshAcv-toolbar .dshAcv-dangerButton,
 .dshAcv .dshAcv-dangerButton,
 .dshAcv .dshAcv-dangerButton:hover {

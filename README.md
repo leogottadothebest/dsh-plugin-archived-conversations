@@ -22,6 +22,9 @@ DeepSeek Harness 插件：在**设置界面**管理**已归档对话**。
 
 - 设置 →「已归档对话」页面，按归档顺序倒序列出全部已归档对话：标题、
   工作区路径、最近活动时间；
+- **空会话与筛选**：创建后从未发送过消息的「空会话」（新对话占位被归档后
+  的残留）单独标注为「空会话」，并默认被「只看真实对话」筛选隐藏；关掉
+  筛选即可查看/删除它们。批量操作的确认框会如实写明其中包含多少个空会话；
 - 行操作：**取消归档**、**删除**（`RiskConfirmation` 确认，需勾选
   「我明白此操作不可恢复」）；
 - 实时双向同步：在侧边栏归档的对话立即出现在本页；在本页取消归档的
@@ -67,6 +70,7 @@ pnpm add dsh-plugin-archived-conversations
 interface ArchivedSessionItem {
   sessionId: string
   title: string | null          // 投影缓存中的标题
+  blank: boolean                // 创建后从未发送消息的空会话（无标题、无活动）
   cwd: string | null            // 工作区路径
   createdAt: number | null      // epoch ms
   updatedAt: number | null      // 最近活动（lastPromptAt ?? createdAt）

@@ -18,7 +18,12 @@ const IDLE = {
   archivedSessionIds: [],
   projects: {},
   message: null,
-  pending: new Set()
+  pending: new Set(),
+  // View state, not data: whether the empty (never-prompted) conversations
+  // are shown. Default off — archived placeholders are noise by default —
+  // and owned here rather than in the page so the choice survives switching
+  // settings sections within one session.
+  showBlank: false
 };
 
 /**
@@ -218,6 +223,15 @@ export class ArchivedConversationsController {
   dismissMessage() {
     if (this.#snapshot.message === null) return;
     this.#emit({ message: null });
+  }
+
+  /**
+   * Show or hide the empty (never-prompted) conversations.
+   * @param showBlank - true to list them alongside real conversations.
+   */
+  setShowBlank(showBlank) {
+    if (this.#snapshot.showBlank === showBlank) return;
+    this.#emit({ showBlank });
   }
 
   dispose() {

@@ -108,6 +108,7 @@ function primitivesSeed(era) {
     Button: function Button() {},
     Menu: function Menu() {},
     RiskConfirmation: function RiskConfirmation() {},
+    Switch: function Switch() {},
     relativeTime: () => ({ unit: "now", n: 0 }),
     ...icons
   };
@@ -227,6 +228,7 @@ async function activate(seed) {
 const ITEM = {
   sessionId: "session-1",
   title: "Smoke session",
+  blank: false,
   cwd: "/tmp/workspace",
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_100_000,
@@ -235,12 +237,33 @@ const ITEM = {
   readError: null
 };
 
-/** The page snapshots every phase branch renders from. */
+/** A never-prompted placeholder: no title, no activity, `blank` set. */
+const BLANK_ITEM = {
+  ...ITEM,
+  sessionId: "session-2",
+  title: null,
+  blank: true,
+  updatedAt: null,
+  archivedAt: null
+};
+
+/**
+ * The page snapshots every phase branch renders from. `shown` / `hidden` are
+ * the page root's own accounting for the "Real conversations only" filter
+ * (default ON): how many rows it renders, and how many empty placeholders it
+ * held back.
+ */
 const SNAPSHOTS = [
-  { name: "ready/rows", snapshot: { phase: "ready", items: [ITEM], archivedSessionIds: [ITEM.sessionId], projects: { [ITEM.cwd]: "Workspace" }, message: { kind: "success", key: "deleted" }, pending: new Set([ITEM.sessionId]) } },
-  { name: "ready/empty", snapshot: { phase: "ready", items: [], archivedSessionIds: [], projects: {}, message: null, pending: new Set() } },
-  { name: "loading", snapshot: { phase: "loading", items: [], archivedSessionIds: [], projects: {}, message: null, pending: new Set() } },
-  { name: "error", snapshot: { phase: "error", items: [], archivedSessionIds: [], projects: {}, message: { kind: "error", text: "boom" }, pending: new Set() } }
+  { name: "ready/rows", shown: 1, hidden: 0, snapshot: { phase: "ready", items: [ITEM], archivedSessionIds: [ITEM.sessionId], projects: { [ITEM.cwd]: "Workspace" }, message: { kind: "success", key: "deleted" }, pending: new Set([ITEM.sessionId]), showBlank: false } },
+  // Default filter ON: the blank row exists in the data but must not render.
+  { name: "ready/mixed-filtered", shown: 1, hidden: 1, snapshot: { phase: "ready", items: [ITEM, BLANK_ITEM], archivedSessionIds: [ITEM.sessionId, BLANK_ITEM.sessionId], projects: { [ITEM.cwd]: "Workspace" }, message: null, pending: new Set(), showBlank: false } },
+  // Filter OFF: the same data renders the blank row too.
+  { name: "ready/mixed-shown", shown: 2, hidden: 0, snapshot: { phase: "ready", items: [ITEM, BLANK_ITEM], archivedSessionIds: [ITEM.sessionId, BLANK_ITEM.sessionId], projects: { [ITEM.cwd]: "Workspace" }, message: null, pending: new Set(), showBlank: true } },
+  // Filter ON with only blanks archived: the empty state must say so.
+  { name: "ready/only-blank-filtered", shown: 0, hidden: 1, snapshot: { phase: "ready", items: [BLANK_ITEM], archivedSessionIds: [BLANK_ITEM.sessionId], projects: {}, message: null, pending: new Set(), showBlank: false } },
+  { name: "ready/empty", shown: 0, hidden: 0, snapshot: { phase: "ready", items: [], archivedSessionIds: [], projects: {}, message: null, pending: new Set(), showBlank: false } },
+  { name: "loading", shown: 0, hidden: 0, snapshot: { phase: "loading", items: [], archivedSessionIds: [], projects: {}, message: null, pending: new Set(), showBlank: false } },
+  { name: "error", shown: 0, hidden: 0, snapshot: { phase: "error", items: [], archivedSessionIds: [], projects: {}, message: { kind: "error", text: "boom" }, pending: new Set(), showBlank: false } }
 ];
 
 /** Walk one rendered tree and reject any element the runtime could not name. */
@@ -321,7 +344,7 @@ function findMarked(node, attribute) {
     return undefined;
   }
   if (node.__dshElement !== true) return undefined;
-  if (node.props !== null && typeof node.props === "object" && Object.hasOwn(node.props, attribute)) return node;
+  if (node.props !== null && typeof node.props === "object" && node.props[attribute] !== undefined) return node;
   return findMarked(node.props?.children, attribute);
 }
 
@@ -354,12 +377,13 @@ for (const era of ERAS) {
     throw new Error(at("settings.section.icon rendered no `data-dshacv-icon-slot` marker — nav-icon.js uses it to detect that the shell owns the glyph and must not run its legacy swap"));
   }
 
-  for (const { name, snapshot } of SNAPSHOTS) {
+  for (const { name, snapshot, shown, hidden } of SNAPSHOTS) {
     const page = {
       subscribe: () => () => {},
       getSnapshot: () => snapshot,
       dismissMessage: () => {},
       refresh: async () => {},
+      setShowBlank: () => {},
       unarchive: async () => true,
       unarchiveAll: async () => {},
       deleteSession: async () => true,
@@ -367,6 +391,11 @@ for (const era of ERAS) {
     };
     const tree = section.component({ page, t: (key) => key, readLocale: () => "zh" });
     assertRenderableType(tree, at(`settings.section[${name}]`));
+    const rendered = Number(tree?.props?.["data-dshacv-shown"]);
+    const heldBack = Number(tree?.props?.["data-dshacv-hidden-blank"]);
+    if (rendered !== shown || heldBack !== hidden) {
+      throw new Error(at(`settings.section[${name}] shows ${String(rendered)} row(s) with ${String(heldBack)} empty conversation(s) hidden, expected ${String(shown)}/${String(hidden)} — the "real conversations only" filter defaults to ON and must hide \`blank\` sessions`));
+    }
   }
   if (typeof dispose === "function") await dispose();
 }

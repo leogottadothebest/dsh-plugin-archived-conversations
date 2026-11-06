@@ -16,6 +16,7 @@ const archivedSessionIds = z.array(sessionId);
 const archivedSessionItem = z.object({
   sessionId,
   title: z.string().nullable(),
+  blank: z.boolean(),
   cwd: z.string().nullable(),
   createdAt: z.number().nullable(),
   updatedAt: z.number().nullable(),
